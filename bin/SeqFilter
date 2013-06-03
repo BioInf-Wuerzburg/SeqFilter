@@ -8,6 +8,7 @@ use Pod::Usage;
 
 use FindBin qw($RealBin);
 use lib "$RealBin/../lib/";
+use File::Basename;
 
 use Verbose;
 use Verbose::ProgressBar;
@@ -31,6 +32,9 @@ SeqFilter - Versatile FASTA/FASTQ sequence file analysis and modification tool.
 =head2 1.04
 
 =over
+
+=item [Feature] --ids-split splits sequences into files according to
+ ID matches.
 
 =item [Change] Migrated from svn to git. Removed obsolete svn keywords and
  derived package vars.
@@ -289,13 +293,34 @@ A PATTERN or a link to a file containing multiple PATTERN, one per
 
 $opt{'ids-pattern=s'} = \(my $opt_ids_pattern = undef);
 
+=item [--ids-split]
+
+Extend use of --ids-pattern from only identifying sequences to also splitting
+ them into different files according to a REQUIRED first capture group
+ in the match. If capture group is empty, sequences are written to --out. 
+ If multiple pattern are provided and an ID has multiple matches, all but 
+ the first match are ignored.
+
+  # split seqs by library (LIB1, LIB2, LIB14)
+  SeqFilter multilib.fq --ids-pattern '\w+(\d+)' --split-ids
+  # creates multilib1.fq, multilib2.fq, multilib14.fq
+
+NOTE: Perl needs to open a filehandle to every split file, this can slow 
+ things down considerably if you want to split into more than 1000 different
+ files with occurances of patterns randomly mixed in source file.
+
+=cut
+
+$opt{'ids-split'} = \(my $opt_ids_split = undef);
+
 =item [--ids-rename=<PATTERN>]
 
 Provide a perl substitution pattern as string. The pattern is applied to 
- every id. Use global "$COUNT" to access the output sequence counter.
+ every id. Use global "$COUNT" to access the output sequence counter, 
+ $PICARD to access the picard number.
 
-  SeqFilter library_1.fq --ids-rename='s/.*\//sprintf("MYLIB1_%05d\/", $COUNT)/e'
-  # creates header:
+  SeqFilter library_1.fq --ids-rename='s/.*\//sprintf("MYLIB_%05d\/%d", $COUNT, $PICARD)/e'
+  # creates ids:
   # @MYLIB_00001/1
   # @MYLIB_00002/1 ...
 
@@ -656,9 +681,18 @@ my ($opt_ids_fh, $opt_rc_fh, $opt_ids_pattern_fh, $opt_substr_fh);
 ($opt_substr_fh, $opt_stdin) = opt2handle('--substr-file', $opt_substr_file, $opt_stdin);
 
 
-#HERE
-
 my %IDS = read_ids($opt_ids_fh) if $opt_ids;
+
+# store filehandles for split pattern
+my %IDS_SPLIT;
+my $IDS_SPLIT_OPEN = 0;
+my $IDS_SPLIT_MATCH;
+
+my ($IN_BASE, $IN_PATH, $IN_SUFFIX) = ($opt_stdin && $opt_stdin eq '--in') ? ('', '', '') : fileparse($opt_in, qw(.fa .fasta .fq .fastq .FA .FASTA .FQ .FASTQ) );
+unless($IN_SUFFIX){
+	$IN_SUFFIX = $FASTQ ? '.fq' :  '.fa';
+}
+
 
 my %RC_IDS;
 my $RC_ALL;
@@ -776,7 +810,14 @@ while (my $SEQ = $FP->next_seq()){
 	}
 	
 	if(@IDS_PATTERS){
-		next unless grep{$ID =~m/$_/}@IDS_PATTERS;
+		foreach my $patt(@IDS_PATTERS){
+			next unless $ID =~m/$patt/;
+			if($opt_ids_split){
+				next unless $1;
+				$ofh = ids_split_fh($1);
+			}
+			last if $ID;
+		}
 	}
 
 	my @fq = ($SEQ);
@@ -823,6 +864,7 @@ while (my $SEQ = $FP->next_seq()){
 		# rename ids
 		if($opt_ids_rename){
 			my $id = $SEQ->id();
+			my $PICARD = $SEQ->picard() || '';
 			eval '$id =~ '.$opt_ids_rename;
 			$V->exit("Eval error in --ids-rename pattern\n".$@) if $@;
 			$SEQ->id($id);
@@ -839,7 +881,7 @@ while (my $SEQ = $FP->next_seq()){
 		$opt_mask && $SEQ->mask_qual_low();
 		
 		# OUTPUT
-		if($opt_out){
+		if($ofh){
 			if($opt_fasta){
 				print $ofh sprintf(">%s\n%s\n", substr ($SEQ->seq_head, 1), $SEQ->seq)
 			}elsif($opt_transform){
@@ -1071,7 +1113,45 @@ sub Nx{
 }	
 
 
+sub ids_split_fh{
+	my $match = shift;
+	if(exists $IDS_SPLIT{$match}){
+		if($IDS_SPLIT{$match}{open}){
+			return $IDS_SPLIT{$match}{fh}
+		}else{ # reopen
+			if($IDS_SPLIT_OPEN > 999){ # close one first
+				my $k = each %IDS_SPLIT; # get a (random) key
+				close {$IDS_SPLIT{$k}{fh}};
+				$IDS_SPLIT{$k}{open} = 0;
+				$IDS_SPLIT_OPEN--;
+			}
+			
+			open(my $fh, '>>', ids_split_filename($match)) 
+				or $V->exit("$!: ".ids_split_filename($match));
+			$IDS_SPLIT{$match}{fh} = $fh;
+			$IDS_SPLIT_OPEN++;
+		}
+	}else{
+		if($IDS_SPLIT_OPEN > 999){ # close one first
+			my $k = each %IDS_SPLIT; # get a (random) key
+			close {$IDS_SPLIT{$k}{fh}};
+			$IDS_SPLIT{$k}{open} = 0;
+			$IDS_SPLIT_OPEN--;
+		}
+		
+		open(my $fh, '>', ids_split_filename($match)) 
+			or $V->exit("$!: ".ids_split_filename($match));
+		$IDS_SPLIT{$match}{fh} = $fh;
+		$IDS_SPLIT_OPEN++;
+	}
+	return $IDS_SPLIT{$match}{fh}
+}
 
+
+sub ids_split_filename{
+	my $match = shift;
+	return $IN_BASE.$match.$IN_SUFFIX;
+}
 
 =head1 AUTHOR
 
