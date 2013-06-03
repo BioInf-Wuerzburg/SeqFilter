@@ -1117,7 +1117,6 @@ sub ids_split_fh{
 	my $match = shift;
 	if(exists $IDS_SPLIT{$match}){
 		if($IDS_SPLIT{$match}{open}){
-			print "already open\n";
 			return $IDS_SPLIT{$match}{fh}
 		}else{ # reopen
 			if($IDS_SPLIT_OPEN > 999){ # close one first
@@ -1133,7 +1132,6 @@ sub ids_split_fh{
 			$IDS_SPLIT_OPEN++;
 		}
 	}else{
-		print "new open\n";
 		if($IDS_SPLIT_OPEN > 999){ # close one first
 			my $k = each %IDS_SPLIT; # get a (random) key
 			close {$IDS_SPLIT{$k}{fh}};
