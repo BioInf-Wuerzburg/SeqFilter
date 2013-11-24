@@ -29,23 +29,6 @@ SeqFilter - Versatile FASTA/FASTQ sequence file analysis and modification tool.
 
 =head1 CHANGELOG seqz (combined Fasta-/FastqFilter)
 
-=cut
-
-=head2 1.05
-
-=over
-
-=cut
-
-#TODO =item [Feature] --peek. Estimates stats, in particular for large files if 
-# no other task requires looping through the entire file.
-
-#TODO =item [BugFix] --ids-rename FASTA/FASTQ picard handling
-
-#TODO =item [Change] No filter stats unless something was filtered.
-
-=back
-
 =head2 1.04
 
 =over
@@ -258,20 +241,6 @@ Output file. Default off. Specify '-' for STDOUT.
 =cut
 
 $opt{'out=s'} = \(my $opt_out = undef);
-
-=item [--peek/--no-peek] [auto]
-
-Generate estimated statistics - doesn't require looping the entire file. 
- This is the default behaviour for plain files > 200 Mb unless other tasks are
- are specified, which require looping the file anyways. The data is sampled
- randomly from the file. 
- 
- For STDIN or GZIP files, --peek guesses stats based on the head of the data.
- "Total" estimates will not be available for STDIN. 
-
-=cut
-
-$opt{'peek!'} = \(my $opt_peek = undef);
 
 =item [--tsv=<STRING/->]
 
@@ -669,27 +638,6 @@ my $VPB = Verbose::ProgressBar->new(
 );
 
 
-##------------------------------------------------------------------------##
-
-=head2 peek
-
-=cut
-
-unless(defined $opt_peek && $file_size > 200_000_000){
-	$opt_peek++;
-}
-
-if($opt_peek){
-	
-}
-
-
-##------------------------------------------------------------------------##
-
-=head2 check output file
-
-=cut
-
 # output file
 my $ofh;
 if($opt_out){
@@ -809,35 +757,13 @@ if($opt_check_format){
 	Fastq::Seq->CheckFormat(1);
 }
 
-
-# init stats objects
 # TOTAL
-my $TOTAL = {
-	desc => 'Input',
-	L => [],
-	count => 0,
-	length => 0,
-	longest => 0,
-	shortest => undef,
-	Ns => {}
-};
-
 my @total_L;
 my $total_count;	# total count
 my $total_length = 0;
 my $total_longest = 0;
+my $total_shortest = undef;
 my %total_Ns;
-
-my $FILTERED = {
-	desc => 'Filtered',
-	L => [],
-	count => 0,
-	length => 0,
-	longest => 0,
-	shortest => undef,
-	Ns => {},
-	BCs => {}
-};
 
 # FILTERED
 my @filtered_L; # lengths of seqs
@@ -858,7 +784,7 @@ my %BCs; # base contents
 
 # loop through FASTQ
 while (my $SEQ = $FP->next_seq()){
-	$TOTAL->{count}++;
+	$total_count++;
 	$VPB->update();
 	
 	my $ID = $SEQ->id;
@@ -866,11 +792,11 @@ while (my $SEQ = $FP->next_seq()){
 	
 	# TOTAL STATS		
 	# store length for Nx computation
-	push @{$TOTAL->{L}}, $length;
+	push @total_L, $length;
 	# length stuff
-	$TOTAL->{length}+=$length;
-	$TOTAL->{longest} = $length if $length > $TOTAL->{longest};
-	$TOTAL->{shortest} = $length if (!defined ($TOTAL->{shortest}) || $length < $TOTAL->{shortest});
+	$total_length+=$length;
+	$total_longest = $length if $length > $total_longest;
+	$total_shortest = $length if (!defined ($total_shortest) || $length < $total_shortest);
 	
 	
 	# FILTER
@@ -967,11 +893,11 @@ while (my $SEQ = $FP->next_seq()){
 		
 		# OUTPUT STATS
 		# store length for Nx computation
-		push @{$FILTERED->{L}}, $length;
+		push @filtered_L, $length;
 		# length stuff
-		$FILTERED->{length}+=$length;
-		$FILTERED->{longest} = $length if $length > $FILTERED->{longest};
-		$FILTERED->{shortest} = $length if (!defined ($FILTERED->{shortest}) || $length < $FILTERED->{shortest});
+		$filtered_length+=$length;
+		$filtered_longest = $length if $length > $filtered_longest;
+		$filtered_shortest = $length if (!defined ($filtered_shortest) || $length < $filtered_shortest);
 		# base content
 		if(@opt_base_content){
 			foreach (@opt_base_content){
@@ -984,19 +910,10 @@ while (my $SEQ = $FP->next_seq()){
 #TODO: adjust to file_s
 $VPB->finish($file_size);
 
-$FILTERED->{count} = $COUNT;
-
-
-
-
-
-
 
 =head2 print summary
 
 =cut
-
-
 
 #Nx computation
 if(@opt_N){
@@ -1200,6 +1117,7 @@ sub ids_split_fh{
 	my $match = shift;
 	if(exists $IDS_SPLIT{$match}){
 		if($IDS_SPLIT{$match}{open}){
+			print "already open\n";
 			return $IDS_SPLIT{$match}{fh}
 		}else{ # reopen
 			if($IDS_SPLIT_OPEN > 999){ # close one first
@@ -1215,6 +1133,7 @@ sub ids_split_fh{
 			$IDS_SPLIT_OPEN++;
 		}
 	}else{
+		print "new open\n";
 		if($IDS_SPLIT_OPEN > 999){ # close one first
 			my $k = each %IDS_SPLIT; # get a (random) key
 			close {$IDS_SPLIT{$k}{fh}};
@@ -1235,40 +1154,6 @@ sub ids_split_fh{
 sub ids_split_filename{
 	my $match = shift;
 	return $IN_BASE.$match.$IN_SUFFIX;
-}
-
-
-=head print_stats
-
-=cut
-
-sub print_stats{
-	my $s = shift;
-	
-	$V->verbose($s->{desc});
-	$V->verbose(sprintf("%-15s %10d #","Sequences", scalar @{$s->L}));
-	$V->verbose(sprintf("%-15s %10d bp", "Total", $s->{length}));
-	$V->verbose(sprintf("%-15s %10d bp", "Longest", $s->{longest}));
-	$V->verbose(sprintf("%-15s %10d bp", "Shortest", $s->{shortest}));
-	
-	my @Ns;
-	foreach (sort{$a <=> $b}keys %{$s->{Ns}}){
-		$V->verbose(sprintf("%-15s %10d bp", "N$_", $s->{Ns}{$_}));
-		push @Ns, $s->{Ns}{$_};
-	}
-	
-	
-	#### HERE #############
-	
-	# base content
-#	my @BCs;
-#	if(keys %{$->s{BCs}}){
-#		foreach my $k(sort keys %{$->s{BCs}}){
-#			$V->verbose(sprintf("%-15s %10d bp %10.2f %%", "[$k]", $BCs{$k}, (100*$BCs{$k}/$filtered_length)));
-#			push @BCs, $BCs{$k};
-#		}
-#	}
-	
 }
 
 =head1 AUTHOR
