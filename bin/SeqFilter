@@ -783,7 +783,7 @@ my %BCs; # base contents
 =cut
 
 # loop through FASTQ
-while (my $SEQ = $FP->next_seq()){
+LOOP: while (my $SEQ = $FP->next_seq()){
 	$total_count++;
 	$VPB->update();
 	
@@ -808,10 +808,12 @@ while (my $SEQ = $FP->next_seq()){
 			next unless $IDS{$ID}
 		}
 	}
+
 	
+        my $matched = 0;
 	if(@IDS_PATTERS){
 		foreach my $patt(@IDS_PATTERS){
-			next unless $ID =~m/$patt/;
+                        $matched = 1 if $ID =~m/$patt/;
 			if($opt_ids_split){
 				next unless $1;
 				$ofh = ids_split_fh($1);
@@ -819,6 +821,8 @@ while (my $SEQ = $FP->next_seq()){
 			last if $ID;
 		}
 	}
+        next LOOP if $matched == 0;
+
 
 	my @fq = ($SEQ);
 
