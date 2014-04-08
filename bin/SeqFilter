@@ -810,8 +810,8 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 	}
 
 	
-        my $matched = 0;
 	if(@IDS_PATTERS){
+          my $matched = 0;
 		foreach my $patt(@IDS_PATTERS){
                         $matched = 1 if $ID =~m/$patt/;
 			if($opt_ids_split){
@@ -820,8 +820,8 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 			}
 			last if $ID;
 		}
+                next LOOP if $matched == 0;
 	}
-        next LOOP if $matched == 0;
 
 
 	my @fq = ($SEQ);
