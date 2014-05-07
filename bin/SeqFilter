@@ -866,9 +866,12 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		# rename ids
 		if($opt_ids_rename){
 			my $id = $SEQ->id();
-			my $PICARD = $SEQ->picard() || '';
+			my $PICARD = '';
+			if($FASTQ){
+			    $PICARD = $SEQ->picard() || '';
+			}
 			eval '$id =~ '.$opt_ids_rename;
-			$V->exit("Eval error in --ids-rename pattern\n".$@) if $@;
+			$V->exit("Evaluation --ids-rename pattern failed. Make sure it is a valid perl substitution pattern\n".$@) if $@;
 			$SEQ->id($id);
 		}
 
