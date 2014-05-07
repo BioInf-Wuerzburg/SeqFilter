@@ -1087,8 +1087,6 @@ sub read_substrs{
 			push @{$s{$id}{rc}}, 0;
 		}
 	}
-	use Data::Dumper;
-	print STDERR Dumper(\%s);
 	return %s;	
 }
 
