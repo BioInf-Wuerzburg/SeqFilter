@@ -826,25 +826,23 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 
 	my @fq = ($SEQ);
 
-	# substr
-	if($opt_substr_file && exists $SUBSTR{'*'} ){
-		@fq = map{
-			$_->substr_seq(@{$SUBSTR{'*'}});
-		}@fq;
-	}
-	
-	if($opt_substr_file && exists $SUBSTR{$ID} ){
-		my @tmp;
-		foreach my $fq (@fq){
-			my @subs = $fq->substr_seq(@{$SUBSTR{$ID}{coords}});
+	if($opt_substr_file){
+	    my @tmp;
+	    foreach my $x ('*',$ID){
+		if(exists $SUBSTR{$x} ){
+		    foreach my $fq (@fq){
+			my @subs = $fq->substr_seq(@{$SUBSTR{$x}{coords}});
 			for(my $i=0; $i<@subs; $i++){
-				$subs[$i]->reverse_complement() if $SUBSTR{$ID}{rc}[$i]
+			    $subs[$i]->reverse_complement() if $SUBSTR{$x}{rc}[$i]
 			}
 			push @tmp, @subs;
-		};
-		@fq = @tmp;
+		    };
+
+		}
+	    }
+	    @fq = @tmp;
 	}
-	
+
 	# slice by lcs
 	if($opt_slice_lcs){ # trim lcs
 		@fq = map{$_->substr_qual_lcs(1)}@fq;
@@ -1070,7 +1068,7 @@ sub read_substrs{
 		chomp();
 		next unless $_; # ignore empty lines
 		next if /^#/; # ignore comments
-		my ($id, @f) = split(/\t/, $_, 4);
+		my ($id, @f) = split(/\s/, $_, 4);
 		$id =~ s/^[>@]//;
 		unless($opt_substr_perl){
 			# transform from-to to offset-length
@@ -1089,6 +1087,8 @@ sub read_substrs{
 			push @{$s{$id}{rc}}, 0;
 		}
 	}
+	use Data::Dumper;
+	print STDERR Dumper(\%s);
 	return %s;	
 }
 
