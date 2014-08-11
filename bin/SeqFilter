@@ -278,7 +278,7 @@ Exclude reads specified by --ids from being reported. Default off.
 
 =cut 
 
-$opt{'ids-exclude'} = \(my $opt_ids_exclude = undef);
+$opt{'ids-exclude'} = \(my $opt_ids_exclude = 0);
 
 =item [--ids-pattern=<FILE/-/PATTERNLIST>]
 
@@ -820,7 +820,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 			}
 			last if $ID;
 		}
-                next LOOP if $matched == 0;
+                next LOOP if $matched == $opt_ids_exclude;
 	}
 
 
