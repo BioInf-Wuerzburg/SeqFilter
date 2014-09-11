@@ -173,6 +173,14 @@ FASTQ only. output FASTA format. Default FASTQ.
 
 $opt{'fasta'} = \(my $opt_fasta = undef);
 
+=item [--line-width] [0]
+
+Line width for FASTA sequences. Set 0 for single line.
+
+=cut
+
+$opt{'line-width=i'} = \(my $opt_line_width = undef);
+
 =item [--rev-comp=<FILE/-/LIST/*>]
 
 Pathname to file of sequence IDs or list of IDs to be transformed, "*" to 
@@ -490,6 +498,15 @@ if(!$FASTQ){
 	}
 }
 
+my %opt_fa_only = (
+	'line-width' => $opt_line_width,
+);
+
+if($FASTQ){
+    $V->exit('--line-width only supported for FASTA output') if ($FASTQ && !$opt_fasta && $opt_line_width);
+}
+
+
 ##------------------------------------------------------------------------##
 
 =head2 Maybe files parameter
@@ -709,11 +726,14 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		# OUTPUT
 		if($ofh){
 			if($opt_fasta){
-				print $ofh sprintf(">%s\n%s\n", substr ($SEQ->seq_head, 1), $SEQ->seq)
+                            print $ofh Fasta::Seq->new(
+                                            seq_head => substr ($SEQ->seq_head, 1),
+                                            seq => $SEQ->seq,
+                                           )->string($opt_line_width);
 			}elsif($opt_transform){
 				print $ofh $SEQ->phred_transform()->string();
 			}else{
-				print $ofh $SEQ->string();
+				print $ofh $SEQ->string($opt_line_width);
 			}
 		}
 		
