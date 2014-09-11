@@ -454,7 +454,12 @@ my $opt_stdin;
 
 if($opt_in ne '-'){
 	$V->exit("Cannot find input file: $opt_in") if ! -f $opt_in;
-	$V->exit("Empty input file: $opt_in") if -s $opt_in == 0;
+
+        if( -s $opt_in == 0){
+            $V->verbose("Empty input file: $opt_in");
+            exit(0);
+        }
+
 }else{
 	$opt_stdin='--in';
 }
