@@ -217,6 +217,15 @@ FASTQ only. Check every FASTQ record to have a valid format. '@/+' at the
 
 $opt{'check-format!'} = \(my $opt_check_format = undef);
 
+=item [--lower-case/--upper-case]
+
+Convert output sequence to lower/upper case.
+
+=cut
+
+$opt{'lower-case!'} = \(my $opt_lower_case = undef);
+$opt{'upper-case!'} = \(my $opt_upper_case = undef);
+
 =item [--phred-offset] [auto]
 
 FASTQ only. Phred offset for quality scores. Default auto-detect.
@@ -744,6 +753,8 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		if($ofh){
                     defined ($opt_desc_replace) && $SEQ->desc($opt_desc_replace);
                     $opt_desc_append && $SEQ->desc_append($opt_desc_append);
+                    $opt_lower_case && $SEQ->seq(lc($SEQ->seq));
+                    $opt_upper_case && $SEQ->seq(uc($SEQ->seq));
                     
                     if ($opt_fasta) {
                         print $ofh Fasta::Seq->new(
