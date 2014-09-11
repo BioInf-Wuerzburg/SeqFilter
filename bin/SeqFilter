@@ -877,6 +877,7 @@ if($tsv){
 
 Use this method with options accepting <LIST/FILE/-> to decide what was 
  actually provided and to return a handle to the content. 
+
 =cut
 
 sub opt2handle{
@@ -889,7 +890,7 @@ sub opt2handle{
 		$h = \*STDIN;
 		$stdin = $k;
 		$V->verbose("$k: STDIN");
-	}elsif(-f $v){
+	}elsif($v !~ /\n/ && -f $v){ # don't try to find file "$v" if it contains newline
 		$V->verbose("$k: $v");
 		open($h, '<', $v) or $V->exit("$!: $v");
 	}else{
