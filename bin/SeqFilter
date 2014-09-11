@@ -19,194 +19,15 @@ use Fastq::Seq 0.11;
 use Fasta::Parser 0.08;
 use Fasta::Seq 0.06;
 
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 =head1 NAME
 
 SeqFilter - Versatile FASTA/FASTQ sequence file analysis and modification tool.
 
-=cut
+=head1 CHANGELOG
 
-=head1 CHANGELOG seqz (combined Fasta-/FastqFilter)
-
-=head2 1.04
-
-=over
-
-=item [Feature] --ids-split splits sequences into files according to
- ID matches.
-
-=item [Change] Migrated from svn to git. Removed obsolete svn keywords and
- derived package vars.
-
-=item [Feature] C<--version> option. Also $VERSION is logged to stdout.
-
-=item [Feature] C<--check-format> to check individual FASTQ entries for 
- correct format.
-
-=back
-
-=head2 1.03
-
-=over
-
-=item [DocFix] Some fixes in the documentation.
-
-=item [Change] C<--rev-comp> uses opt2handle as well.
-
-=item [Change] Consistent evaluation of parameter that specify one
- of the 'LIST', '-', 'FILE.
-
-=item [Feature] C<--ids-pattern> allows to filter sequences based
- on a provided ID pattern.
-
-=back
-
-=head2 1.02
-
-=over
-
-=item [BugFix] --base-content percentage are now calculated based on 
- C<$filtered_length> and not C<$total_length>
-
-=item [Feature] Renaming of ids including access to global output seq counter.
-
-=item [BugFix] Accept "--substr FROM" without "TO". Means substr to end of seq.
-
-=item [Feature] Specify C<--rev-comp *> to apply reverse complement to
- all sequences of the file.
-
-=item [BugFix] Fixed error determining size of gzipped files.
-
-=item [Feature] Directly read gzipped files using of the latest 
- feature of Fasta::Parser / Fastq::Parser.
-
-=item [BugFix] Fixed an incorrect progress display at eof.
-
-=item [BugFix] Replacement in --substr-perl-style was not splitted correctly
-
-=item [Feature] C<--substr> FROM > TO returns TO-FROM as reverse complement.
-
-=back
-
-=head2 1.01
-
-=over
-
-=item [Feature] C<--substr-perl-style> enables usage of C<--substr> OFFSET
- [LENGTH [REPLACEMENT]].
-
-=item [Change] C<--substr> uses by default  TO FROM syntax instead of OFFSET
- [LENGTH [REPLACEMENT]]
-
-=item [Feature] C<--rev-comp> to output sequences specified by ID as reverse 
- complement.
-
-=item [Feature] Comment lines indicated by leading "#" are now supported in
- substr and ids files.
-
-=item [Feature] Verbose levels to omit Progressbar and entire output, 
- --quiet as convenience for --verbose=0.
-
-=back
-
-=head2 1.00
-
-=over
-
-
-=item [BugFix] empty LISTs returned by qual_lcs / qual_win are now handled 
- correctly.
-
-=item [Refactoring] Merged FastaFilter.pl and FastqFilter.pl in this one script.
-
-=back
-
-=head1 CHANGELOG FastqFilter
-
-=head2 1.10
-
-=over
-
-=item [Feature] substring extraction and modification of sequences based
- on coordinates file.
-
-=back
-
-=head2 1.03 [Thomas Hackl 2013-01-28]
-
-=over
-
-=item [Feature] C<--phred-transform> to switch phred offsets between 33 and 64
-
-=item [BugFix] Did set sliding window size instead of min value.
-
-=item [Feature] IDS can have leading '@' or '>'.
-
-=item [Change] C<--min-length/--max-length> filter are now executed
- after any trimming stuff.
-
-=item [Feature] Autodetect <--phred-offset>.
-
-=item [Feature] Sliding window based C<--trim>. 
-
-=item [Renaming] C<--slice-lcs> to C<--trim-lcs>.
-
-=back
-
-=over
-
-=item 1.02 [Thomas Hackl 2012-13-09]
-
-Bugfix. Nx computation now correctly uses total length of filtered
- output, not total length of input.
-
-=item 1.01 [Thomas Hackl 2012-11-09]
-
-Bugfix. Renamed C<< reads_ids >> to C<< read_ids >>.
-
-=item 1.00 [Thomas Hackl 2012-11-08]
-
-Major Refactoring. 
-
-=item 0.06 [Thomas Hackl 2012-11-06]
-
-Bugfix. --fasta now accuratly also prints the descrition of the header line.
-
-=item 0.05 [Thomas Hackl 2012-10-02]
-
-Added --slice_lcs
-
-=item 0.04 [Thomas Hackl 2012-09-27]
-
-Removed --n-content, added --base-content, which allows you to specify 
- particular bases or group of base in a "," separated list to be scanned for.
-
-=item 0.03 [Thomas Hackl 2012-08-31]
-
-Added --ids, --ids-exclude
-
-=item 0.02 [Thomas Hackl 2012-08-30]
-
-Versioned, Verbose::ProgressBar, --min-length
-
-=back
-
-=cut
-
-=head1 TODO
-
-=over
-
-=item peek
-
-=back
-
-=cut
-
-
-
-##------------------------------------------------------------------------##
+see git log
 
 =head1 SYNOPSIS
 
@@ -339,8 +160,8 @@ $opt{'min-length=i'} = \(my $opt_min_length = 0);
 =item [--max-length=<INT>]
 
 Maximum length for sequences to be retrieved. Default off.
- 
-=cut 
+
+=cut
 
 $opt{'max-length=i'} = \(my $opt_max_length = undef);
 
