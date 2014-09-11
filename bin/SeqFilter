@@ -156,7 +156,7 @@ removes entire description.
 
 =cut
 
-$opt{'desc-replace:s'} = \(my $desc_replace = undef);
+$opt{'desc-replace:s'} = \(my $opt_desc_replace = undef);
 
 =item [--desc-append]
 
@@ -164,7 +164,7 @@ Append description of sequence header in output.
 
 =cut
 
-$opt{'desc-append=s'} = \(my $desc_append = undef);
+$opt{'desc-append=s'} = \(my $opt_desc_append = undef);
 
 =item [--min-length=<INT>]
 
@@ -742,8 +742,8 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		
 		# OUTPUT
 		if($ofh){
-                    defined ($desc_replace) && $SEQ->desc($desc_replace);
-                    $desc_append && $SEQ->desc_append($desc_append);
+                    defined ($opt_desc_replace) && $SEQ->desc($opt_desc_replace);
+                    $opt_desc_append && $SEQ->desc_append($opt_desc_append);
                     
                     if ($opt_fasta) {
                         print $ofh Fasta::Seq->new(
