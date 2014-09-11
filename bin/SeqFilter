@@ -226,6 +226,14 @@ Convert output sequence to lower/upper case.
 $opt{'lower-case!'} = \(my $opt_lower_case = undef);
 $opt{'upper-case!'} = \(my $opt_upper_case = undef);
 
+=item [--iupac-to-N]
+
+Convert non [ATGCNatgcn] characters to N.
+
+=cut
+
+$opt{'iupac-to-N!'} = \(my $opt_iupac_to_N = undef);
+
 =item [--phred-offset] [auto]
 
 FASTQ only. Phred offset for quality scores. Default auto-detect.
@@ -753,6 +761,12 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		if($ofh){
                     defined ($opt_desc_replace) && $SEQ->desc($opt_desc_replace);
                     $opt_desc_append && $SEQ->desc_append($opt_desc_append);
+
+                    # this it the fastest and most efficent way,
+                    # however direct pointer access to seq might is
+                    # vulnerable
+                    $opt_iupac_to_N && $SEQ->{seq} =~ tr/ATGCNatgcn/N/c;
+
                     $opt_lower_case && $SEQ->seq(lc($SEQ->seq));
                     $opt_upper_case && $SEQ->seq(uc($SEQ->seq));
                     
