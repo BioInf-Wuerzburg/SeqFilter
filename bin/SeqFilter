@@ -149,6 +149,23 @@ Provide a perl substitution pattern as string. The pattern is applied to
 
 $opt{'ids-rename=s'} = \(my $opt_ids_rename = undef);
 
+=item [--desc-replace]
+
+Replace description from sequence header in output. Without argument
+removes entire description.
+
+=cut
+
+$opt{'desc-replace:s'} = \(my $desc_replace = undef);
+
+=item [--desc-append]
+
+Append description of sequence header in output.
+
+=cut
+
+$opt{'desc-append=s'} = \(my $desc_append = undef);
+
 =item [--min-length=<INT>]
 
 Minimum sequence length.
@@ -725,16 +742,19 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		
 		# OUTPUT
 		if($ofh){
-			if($opt_fasta){
-                            print $ofh Fasta::Seq->new(
-                                            seq_head => substr ($SEQ->seq_head, 1),
-                                            seq => $SEQ->seq,
-                                           )->string($opt_line_width);
-			}elsif($opt_transform){
-				print $ofh $SEQ->phred_transform()->string();
-			}else{
-				print $ofh $SEQ->string($opt_line_width);
-			}
+                    defined ($desc_replace) && $SEQ->desc($desc_replace);
+                    $desc_append && $SEQ->desc_append($desc_append);
+                    
+                    if ($opt_fasta) {
+                        print $ofh Fasta::Seq->new(
+                                                   seq_head => substr ($SEQ->seq_head, 1),
+                                                   seq => $SEQ->seq,
+                                                  )->string($opt_line_width);
+                    } elsif ($opt_transform) {
+                        print $ofh $SEQ->phred_transform()->string();
+                    } else {
+                        print $ofh $SEQ->string($opt_line_width);
+                    }
 		}
 		
 		# OUTPUT STATS
