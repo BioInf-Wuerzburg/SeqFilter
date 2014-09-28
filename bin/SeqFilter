@@ -719,7 +719,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 
 		}
 	    }
-	    @fq = @tmp;
+	    @fq = @tmp ? @tmp : @fq;
 	}
 
 	# slice by lcs
