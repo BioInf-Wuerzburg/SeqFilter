@@ -19,7 +19,7 @@ use Fastq::Seq 0.12;
 use Fasta::Parser 0.08;
 use Fasta::Seq 0.06;
 
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 
 =head1 NAME
 
@@ -262,14 +262,15 @@ NOTE: Requires C<--phred-offset>.
 
 $opt{'phred-mask=s'} = \(my $opt_mask = undef);
 
-=item [--trim-window=<INT1>,[<INT2>]]
+=item [--trim-window=<INT1>,[<INT2>],[<INT3>]]
 
-FASTQ only. Trim sequences to quality >= INT1 using a sliding window of size
- INT2, default 10. The sliding window allows to have positions
- below the <--trim> cutoff provided the window mean is higher than
- INT1. It is made sure that a) positions with quality below cutoff only 
- occur within the remaining sequence, not at its start/end and b) windows
- never overlap eachother.
+FASTQ only. Trim sequences to quality >= SOFT,HARD,SIZE in a sliding
+ window, default 10. The sliding window allows to have positions below
+ the SOFT cutoff provided the window mean is higher than
+ SOFT. Qualities below HARD, default 0, will always terminate a
+ stretch. It is made sure that a) positions with quality below cutoff
+ only occur within the remaining sequence, not at its start/end and b)
+ windows never overlap eachother.
 
 =cut
 
@@ -625,8 +626,9 @@ if($opt_slice_lcs){
 }
 
 if($opt_trim){
-	my ($min, $wsize) = (split(',', $opt_trim), 10);
-	Fastq::Seq->Qual_window_min($min);
+	my ($soft_min, $hard_min, $wsize) = (split(',', $opt_trim), 0, 10);
+	Fastq::Seq->Qual_window_min_score_soft($soft_min);
+	Fastq::Seq->Qual_window_min_score_hard($hard_min);
 	Fastq::Seq->Qual_window_size($wsize);
 }
 
