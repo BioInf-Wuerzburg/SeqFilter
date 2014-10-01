@@ -190,6 +190,14 @@ FASTQ only. output FASTA format. Default FASTQ.
 
 $opt{'fasta'} = \(my $opt_fasta = undef);
 
+=item [--fastq=<CHAR>]
+
+FASTA only. Generate FASTQ using <CHAR> as quality.
+
+=cut
+
+$opt{'fastq=s'} = \(my $opt_fastq = undef);
+
 =item [--line-width] [0]
 
 Line width for FASTA sequences. Set 0 for single line.
@@ -540,10 +548,13 @@ if(!$FASTQ){
 
 my %opt_fa_only = (
 	'line-width' => $opt_line_width,
+        'fastq' => $opt_fastq,
 );
 
 if($FASTQ){
-    $V->exit('--line-width only supported for FASTA output') if ($FASTQ && !$opt_fasta && $opt_line_width);
+    while (my ($k,$v) = each %opt_fa_only){
+        defined $v && $V->exit("$k can only be used on FASTA data"); 
+    }
 }
 
 
@@ -634,6 +645,10 @@ if($opt_trim){
 
 if($opt_check_format){
 	Fastq::Seq->CheckFormat(1);
+}
+
+if($opt_fastq && length $opt_fastq != 1){
+    $V->exit("--fastq needs to be a single character!");
 }
 
 # TOTAL
@@ -782,6 +797,11 @@ LOOP: while (my $SEQ = $FP->next_seq()){
                                                    seq_head => substr ($SEQ->seq_head, 1),
                                                    seq => $SEQ->seq,
                                                   )->string($opt_line_width);
+                    } elsif ($opt_fastq) {
+                        print $ofh '@', substr ($SEQ->seq_head, 1),"\n",
+                                   $SEQ->seq,"\n",
+                                   "+","\n",
+                                   $opt_fastq x length($SEQ->seq),"\n";
                     } elsif ($opt_transform) {
                         print $ofh $SEQ->phred_transform()->string();
                     } else {
