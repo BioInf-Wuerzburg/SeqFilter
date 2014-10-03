@@ -19,6 +19,19 @@ use Fastq::Seq 0.12;
 use Fasta::Parser 0.08;
 use Fasta::Seq 0.06;
 
+use constant {
+                 OFFSET => 0,
+                 LENGTH => 1,
+                 FROM => 0,
+                 TO => 1,
+                 MASK_MIN => 2,
+                 UNMASK_MIN => 3,
+                 MASK_REDUCE => 4,
+                 MASK_END_RATIO => 5,
+                };
+
+use Storable 'dclone';
+    
 our $VERSION = '1.06';
 
 =head1 NAME
@@ -261,9 +274,18 @@ $opt{'phred-transform'} = \(my $opt_transform);
 
 =item [--phred-mask]
 
-FASTQ only. Two values separated by ",", e.g "0,10" to mask all Nucleotides with
- phred below 10 with an "N".
- 
+FASTQ only. At least two values separated by ",", e.g "0,10" to mask
+ all Nucleotides with phred below 10 with an "N". Optional additional
+ values control:
+
+  minimum length of unmasked regions
+  minimum length of masked regions
+  bps to ignore at the ends of masked regions (shorten masked regions to their
+    core)
+  a ratio that determines whether to mask/unmasked terminal regions that are
+    smaller than are minimum unmasked region
+
+
 NOTE: Requires C<--phred-offset>.
 
 =cut
@@ -625,9 +647,23 @@ if($opt_tsv){
 	} 
 }
 
+my @opt_mask;
+my $opt_mask_advanced;
 if($opt_mask){
-	my($from, $to, $length) = split(',', $opt_mask);
-	Fastq::Seq->Qual_low_range($from, $to, $opt_offset);
+
+    @opt_mask = split(',', $opt_mask);
+    unless (@opt_mask > 1){
+        $V->exit("--phred-mask requires at least to values");
+    }
+    
+    $opt_mask_advanced = 1 if @opt_mask > 2;
+    Fastq::Seq->Qual_lcs_range($opt_mask[FROM], $opt_mask[TO], $opt_offset);
+    my $opt_mask_min =  int(($opt_mask[MASK_MIN] ? $opt_mask[MASK_MIN] + (2* $opt_mask[MASK_END_RATIO]) : 1) +.5);
+    
+    Fastq::Seq->Qual_lcs_min_length($opt_mask_min);
+
+    # Fastq::Seq->Qual_low_range($opt_mask[FROM],$opt_mask[TO], $opt_offset);
+    print STDERR "@opt_mask $opt_mask_min\n";
 }
 
 if($opt_slice_lcs){
@@ -777,7 +813,13 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		}
 		
 		# mask low quality
-		$opt_mask && $SEQ->mask_qual_low();
+		if($opt_mask){
+                    if($opt_mask_advanced){
+                        phred_mask_advanced($SEQ);
+                    }else{
+                        $SEQ->mask_seq($SEQ->qual_lcs());
+                    }
+                }
 		
 		# OUTPUT
 		if($ofh){
@@ -1074,6 +1116,161 @@ sub ids_split_filename{
 	my $match = shift;
 	return $IN_BASE.$match.$IN_SUFFIX;
 }
+
+
+sub phred_mask_advanced{
+
+    my $fq = $_[0];
+    # @opt_mask
+    # FROM, TO,
+    # MASK_MIN:       $hcr_min_length
+    # UNMASK_MIN:     $lcr_min_length
+    # MASK_REDUCE:    $opt_lcr_sticky_length
+    # MASK_END_RATIO: $opt_lcr_end_ratio
+
+    # $hcrs[$i][0] == $hcrs[$i][OFFSET] := offset
+    # $hcrs[$i][1] == $hcrs[$i][LENGTH] := length
+    
+    #    # clone
+    #   my $fq = $fq->new;
+    # compute high coverage regions 
+    my @hcrs = ($fq->qual_lcs());
+        #print STDERR "PHRED MASK ADVANCED @hcrs\n";
+    if (@hcrs) {
+        my $hcr_c = 0;
+        # create a description string of hcrs in seq
+        my @hcrs_string = map{"HCR".++$hcr_c.":".$_->[OFFSET].','.$_->[LENGTH]}@hcrs;
+        # add desc to header
+        $fq->{seq_head}.= ' '.join(" ", @hcrs_string);
+
+        #hcr sticky
+        foreach (@hcrs) {
+            $_->[OFFSET]+=$opt_mask[MASK_REDUCE]; 
+            $_->[LENGTH]-=($opt_mask[MASK_REDUCE] * 2);
+        }	
+			
+        #head
+        # mask/unmask start
+        my $seq_length = length($fq->seq);
+        my $lcr_start_short = $opt_mask[UNMASK_MIN] - $hcrs[0][OFFSET];
+        # Consider starts shorter then lcr_min_length
+        if ($lcr_start_short > 0) {
+				# unmask start if its long enough to be worth it: short < 50% lcr_min_length
+            if ( $lcr_start_short < $opt_mask[MASK_END_RATIO] * $opt_mask[UNMASK_MIN] ) { 
+                #$v->hline;
+                #$v->verbose('first hcr to close to start '.$lcr_start_short);
+                # if OFFSET is adjusted, LENGTH always needs to be adjusted
+                #  as well or the HCR is just shifted
+                # adjust length, check for hcr_min_length
+                if ( ($hcrs[0][LENGTH] -= $lcr_start_short) < $opt_mask[MASK_MIN]) {
+                    #$v->verbose('first hcr to short: '.$hcrs[0][LENGTH]);
+                    shift @hcrs; # remove first hcr if it becomes to short after trimming
+                } else {
+                    #$v->verbose('first hcr trimmed');
+                    $hcrs[0][OFFSET] += $lcr_start_short;
+                }
+            } else {            # mask start completely
+                $hcrs[0][LENGTH] += $hcrs[0][OFFSET];
+                $hcrs[0][OFFSET] = 0;
+            }
+        } 
+			
+        # mask/unmask end
+        if ( scalar @hcrs ) { # check if there are HCRs, might be trimmed by first
+            my $lcr_end_short = $opt_mask[UNMASK_MIN] - ($seq_length - ($hcrs[$#hcrs][OFFSET] + $hcrs[$#hcrs][LENGTH]));
+				# check if it is to close to the end
+            if ($lcr_end_short  > 0) {
+                if ($lcr_end_short < $opt_mask[MASK_END_RATIO] * $opt_mask[UNMASK_MIN] ) {
+                    #$v->verbose('last hcr to close to end '.$lcr_end_short);
+                    # shorten last hcr and check its length
+                    if ( ($hcrs[$#hcrs][LENGTH] -= $lcr_end_short) < $opt_mask[MASK_MIN]) {
+                        #$v->verbose('last hcr to short');
+                        pop @hcrs; # remove last hcr if it becomes to short after trimming
+                    }
+                } else {        # extend hcr to end of seq
+                    $hcrs[$#hcrs][LENGTH] += $opt_mask[UNMASK_MIN] - $lcr_end_short
+                }
+            }
+        } 
+			
+        # precompute changes
+        my $cc=0;
+        while ( @hcrs ) {
+				#print "#- hcr trimming cycle ", ++$cc, " --#\n";
+				# create temporary hash structure with indexes as keys
+            my %hcrs;
+            my @hcrs_short_idx;
+				# DEEEEP COPY REQUIRED !!!!!!!!!!
+            my @tmp_hcrs = @{dclone(\@hcrs)};
+            @hcrs{0..$#hcrs} = @tmp_hcrs;
+				# find + extend short hcrs
+				# + cache short hcr idxs
+            my $i=0;
+            for (;$i<$#hcrs;$i++) {
+                # compute gap to next
+                my ($ha, $hb) = ($hcrs{$i}, $hcrs{$i+1});
+                my $hae = $ha->[OFFSET]+$ha->[LENGTH];
+                my $hbs = $hb->[OFFSET];
+                if ((my $lcr_short = $opt_mask[UNMASK_MIN] - ($hbs - $hae)) > 0) {
+                    my $lcr_short_a = int($lcr_short/2);
+                    my $lcr_short_b = $lcr_short_a + $lcr_short%2; 
+                    $ha->[LENGTH] -= $lcr_short_a;
+                    if ( $ha->[LENGTH] < $opt_mask[MASK_MIN] ) { # $ha is completely processed
+                        push @hcrs_short_idx, $i 
+                    }
+                    $hb->[OFFSET] += $lcr_short_b;
+                    $hb->[LENGTH] -= $lcr_short_b;
+                }
+            }
+				# and dont forget the last hcr length
+            if ( $hcrs{$i}[LENGTH] < $opt_mask[MASK_MIN] ) { # $ha is completely processed
+                push @hcrs_short_idx, $i 
+            }
+				
+				# skip longer adjacent
+            my @hcrs_short_idx_clean;
+            foreach (@hcrs_short_idx) {
+                unless(@hcrs_short_idx_clean){
+                    push @hcrs_short_idx_clean, $_
+                } elsif ( $_ -1 == $hcrs_short_idx_clean[-1] ) { # adjacent
+                    # compare lengths
+                    if ($hcrs{$_}[LENGTH] < $hcrs{$hcrs_short_idx_clean[-1]} ) {
+                        # prev was longer, remove from clean, push new
+                        pop @hcrs_short_idx_clean;
+                        push @hcrs_short_idx_clean, $_;
+                    }
+                    # else do nothing -> skip
+                } else {        # non adjacent
+                    push @hcrs_short_idx_clean, $_
+                }
+            }
+				
+				# all conflicting hcrs/lcrs trimmed
+            unless(@hcrs_short_idx_clean){
+                @hcrs = @tmp_hcrs;
+                last;
+            }
+            ;
+				
+				# remove unmodified hcrs before next cycle
+            my $rm_c = 0;
+            foreach (@hcrs_short_idx_clean) {
+                splice(@hcrs, $_ - $rm_c, 1);
+                $rm_c++;
+            }
+        }
+
+	
+        # create a description for actually masked hcrs in seq
+        my $mcr_c = 0;
+        my @mcrs_string = map{"MCR".++$mcr_c.":".$_->[OFFSET].','.$_->[LENGTH]}@hcrs;
+        # add desc to header
+        $fq->{seq_head}.= ' '.join(" ", @mcrs_string);
+        $fq->mask_seq(@hcrs) if @hcrs;
+    }
+}
+
+
 
 =head1 AUTHOR
 
