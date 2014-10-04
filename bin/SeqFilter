@@ -657,13 +657,11 @@ if($opt_mask){
     }
     
     $opt_mask_advanced = 1 if @opt_mask > 2;
+    push @opt_mask, 0 while @opt_mask < 6; # make 0 default
     Fastq::Seq->Qual_lcs_range($opt_mask[FROM], $opt_mask[TO], $opt_offset);
-    my $opt_mask_min =  int(($opt_mask[MASK_MIN] ? $opt_mask[MASK_MIN] + (2* $opt_mask[MASK_END_RATIO]) : 1) +.5);
+    my $opt_mask_min =  int(($opt_mask[MASK_MIN] ? $opt_mask[MASK_MIN] + (2* $opt_mask[MASK_REDUCE]) : 1) +.5);
     
     Fastq::Seq->Qual_lcs_min_length($opt_mask_min);
-
-    # Fastq::Seq->Qual_low_range($opt_mask[FROM],$opt_mask[TO], $opt_offset);
-    print STDERR "@opt_mask $opt_mask_min\n";
 }
 
 if($opt_slice_lcs){
@@ -1148,7 +1146,7 @@ sub phred_mask_advanced{
             $_->[OFFSET]+=$opt_mask[MASK_REDUCE]; 
             $_->[LENGTH]-=($opt_mask[MASK_REDUCE] * 2);
         }	
-			
+
         #head
         # mask/unmask start
         my $seq_length = length($fq->seq);
