@@ -575,7 +575,11 @@ my %opt_fa_only = (
 
 if($FASTQ){
     while (my ($k,$v) = each %opt_fa_only){
-        defined $v && $V->exit("$k can only be used on FASTA data"); 
+        if($k eq 'line-width'){ # special case, allowed in comb. with --fasta
+            defined $v && ! $opt_fasta && $V->exit("$k can only be used on FASTA data");
+        }else{
+            defined $v && $V->exit("$k can only be used on FASTA data");
+        }
     }
 }
 
