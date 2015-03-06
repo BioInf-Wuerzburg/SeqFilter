@@ -741,18 +741,17 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		}
 	}
 
-	
-	if(@IDS_PATTERS){
-          my $matched = 0;
-		foreach my $patt(@IDS_PATTERS){
-                        $matched = 1 if $ID =~m/$patt/;
-			if($opt_ids_split){
-				next unless $1;
-				$ofh = ids_split_fh($1);
-			}
-			last if $ID;
-		}
-                next LOOP if $matched == $opt_ids_exclude;
+	if (@IDS_PATTERS) {
+            my $matched = 0;
+            foreach my $patt (@IDS_PATTERS) {
+                $matched = 1 if $ID =~m/$patt/;
+                if ($opt_ids_split) {
+                    next unless $1;
+                    $ofh = ids_split_fh($1);
+                }
+                last if $matched;
+            }
+            next LOOP if $matched == $opt_ids_exclude;
 	}
 
 
