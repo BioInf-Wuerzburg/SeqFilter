@@ -598,6 +598,7 @@ my ($opt_ids_fh, $opt_rc_fh, $opt_ids_pattern_fh, $opt_substr_fh);
 
 my %IDS = read_ids($opt_ids_fh) if $opt_ids;
 
+
 # store filehandles for split pattern
 my %IDS_SPLIT;
 my $IDS_SPLIT_OPEN = 0;
@@ -612,20 +613,17 @@ unless($IN_SUFFIX){
 my %RC_IDS;
 my $RC_ALL;
 if($opt_rc){
-	my $opt_rc_fh;
-	if($opt_rc eq '*'){
-		$RC_ALL++;
-	}elsif($opt_rc eq '-' && $opt_ids eq '-'){
-		if($opt_ids_exclude){
-			$V->exit("It does not make sense to rev-comp the same ids you are going to exclude!");
-		}
-		%RC_IDS = %IDS;
-	}elsif(-f $opt_rc){
-		open($opt_rc_fh, '<', $opt_rc) or $V->exit("$!: $opt_rc");
-	}else{
-		open($opt_rc_fh, '<', \$opt_rc) or $V->exit("$!: $opt_rc");
-	}
-	%RC_IDS = read_ids($opt_rc_fh) if $opt_rc_fh;
+    if($opt_rc eq '*'){
+        $RC_ALL++;
+    }elsif($opt_rc eq '-' && $opt_ids eq '-'){
+        if($opt_ids_exclude){
+            $V->exit("It does not make sense to rev-comp the same ids you are going to exclude!");
+        }
+        %RC_IDS = %IDS;
+    }else {
+        ($opt_rc_fh, $opt_stdin) = opt2handle('--rev-comp', $opt_rc, $opt_stdin);
+        %RC_IDS = read_ids($opt_rc_fh) if $opt_rc_fh;        
+    }
 }
 
 
