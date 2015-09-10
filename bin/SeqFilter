@@ -13,7 +13,7 @@ use File::Basename;
 use Verbose;
 use Verbose::ProgressBar;
 
-use Fastq::Parser 0.09;
+use Fastq::Parser 0.10.0;
 use Fastq::Seq 0.13.3;
 
 use Fasta::Parser 0.08;
