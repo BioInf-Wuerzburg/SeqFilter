@@ -1,3 +1,4 @@
+#+BEGIN_SRC 
 Usage:
       perl SeqFilter --in <SEQFILE> <OPTIONS> --out <OUTFILE>
   
@@ -214,3 +215,5 @@ Options:
     [--version|-V]
         Display current version
 
+
+#+END_SRC
