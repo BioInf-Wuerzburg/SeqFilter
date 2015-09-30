@@ -10,6 +10,8 @@ use FindBin qw($RealBin);
 use lib "$RealBin/../lib/";
 use File::Basename;
 
+use IO::File;
+
 use Verbose;
 use Verbose::ProgressBar;
 
@@ -31,8 +33,8 @@ use constant {
                 };
 
 use Storable 'dclone';
-    
-our $VERSION = '1.06';
+
+our $VERSION = '1.7.0';
 
 =head1 NAME
 
@@ -45,7 +47,7 @@ see git log
 =head1 SYNOPSIS
 
   perl SeqFilter --in <SEQFILE> <OPTIONS> --out <OUTFILE>
-  
+
   cat <SEQFILE> | SeqFilter <OPTIONS> --out '-' > OUTFILE
 
 =cut
@@ -78,31 +80,31 @@ $opt{'out=s'} = \(my $opt_out = undef);
 
 =item [--tsv=<STRING/->]
 
-Print tab separated statistics of data AFTER filtering to pathname, 
- default off, specify '-' for STDOUT, but only if '--out' is not redirected 
+Print tab separated statistics of data AFTER filtering to pathname,
+ default off, specify '-' for STDOUT, but only if '--out' is not redirected
  to STDOUT.
 
-Column order is: number of sequences, total length, longest, shortest, 
- Nx-values, base-contents. No header is printed, so multiple runs can 
+Column order is: number of sequences, total length, longest, shortest,
+ Nx-values, base-contents. No header is printed, so multiple runs can
  simply be concatenated.
 
-=cut 
+=cut
 
 $opt{'tsv=s'} = \(my $opt_tsv = '');
 
 =item [--ids=<FILE/-/IDLIST>]
 
-Pathname to file of sequence IDs or a literal list of IDs to be reported. 
- Reads comma-separated, whitespace and newline separated lists. Specify '-' 
+Pathname to file of sequence IDs or a literal list of IDs to be reported.
+ Reads comma-separated, whitespace and newline separated lists. Specify '-'
  to read IDs form STDIN. Leading '>' or '@' are allowed but not necessary.
 
   # get two seqs by ID
   SeqFilter fasta.fa --ids "seq35,seq49"
   # read ids from file
   SeqFilter fasta.fa --ids ids.list
-  
 
-=cut 
+
+=cut
 
 $opt{'ids=s'} = \(my $opt_ids = '');
 
@@ -110,18 +112,18 @@ $opt{'ids=s'} = \(my $opt_ids = '');
 
 Exclude reads specified by --ids from being reported. Default off.
 
-=cut 
+=cut
 
 $opt{'ids-exclude'} = \(my $opt_ids_exclude = 0);
 
 =item [--ids-pattern=<FILE/-/PATTERNLIST>]
 
-A PATTERN or a link to a file containing multiple PATTERN, one per 
+A PATTERN or a link to a file containing multiple PATTERN, one per
  line, to match against sequence ids. Only matching sequences will
  be returned.
 
   # get seqs with ids matching pattern
-  SeqFilter seqs.fq --ids-patt 'comp2_c13_seq*|comp2_c88_seq*' 
+  SeqFilter seqs.fq --ids-patt 'comp2_c13_seq*|comp2_c88_seq*'
 
 =cut
 
@@ -131,15 +133,15 @@ $opt{'ids-pattern=s'} = \(my $opt_ids_pattern = undef);
 
 Extend use of --ids-pattern from only identifying sequences to also splitting
  them into different files according to a REQUIRED first capture group
- in the match. If capture group is empty, sequences are written to --out. 
- If multiple pattern are provided and an ID has multiple matches, all but 
+ in the match. If capture group is empty, sequences are written to --out.
+ If multiple pattern are provided and an ID has multiple matches, all but
  the first match are ignored.
 
   # split seqs by library (LIB1, LIB2, LIB14)
   SeqFilter multilib.fq --ids-pattern '\w+(\d+)' --split-ids
   # creates multilib1.fq, multilib2.fq, multilib14.fq
 
-NOTE: Perl needs to open a filehandle to every split file, this can slow 
+NOTE: Perl needs to open a filehandle to every split file, this can slow
  things down considerably if you want to split into more than 1000 different
  files with occurances of patterns randomly mixed in source file.
 
@@ -149,8 +151,8 @@ $opt{'ids-split'} = \(my $opt_ids_split = undef);
 
 =item [--ids-rename=<PATTERN>]
 
-Provide a perl substitution pattern as string. The pattern is applied to 
- every id. Use global "$COUNT" to access the output sequence counter, 
+Provide a perl substitution pattern as string. The pattern is applied to
+ every id. Use global "$COUNT" to access the output sequence counter,
  $PICARD to access the picard number.
 
   SeqFilter library_1.fq --ids-rename='s/.*\//sprintf("MYLIB_%05d\/%d", $COUNT, $PICARD)/e'
@@ -221,10 +223,10 @@ $opt{'line-width=i'} = \(my $opt_line_width = undef);
 
 =item [--rev-comp=<FILE/-/LIST/*>]
 
-Pathname to file of sequence IDs or list of IDs to be transformed, "*" to 
- transform all sequences. Formatting follows the same rules as --ids files. 
+Pathname to file of sequence IDs or list of IDs to be transformed, "*" to
+ transform all sequences. Formatting follows the same rules as --ids files.
 
-=cut 
+=cut
 
 $opt{'rev-comp=s'} = \(my $opt_rc = '');
 
@@ -317,35 +319,35 @@ NOTE: C<--trim-lcs> and C<--trim-window> can be combined, e.g.
 
   --trim-lcs 5,40,100 --trim-window 10
 
-will generate sequences with qualities of at least 5 at every position and 
+will generate sequences with qualities of at least 5 at every position and
  a window mean of 10.
 
 =cut
 
 $opt{'trim-lcs=s'} = \(my $opt_slice_lcs = undef);
 
-=item [--substr=<FILE/-/LIST>]    
+=item [--substr=<FILE/-/LIST>]
 
 Pathname to a FILE containing information for subseq extraction/modification.
 The format is a tsv, by default lines of the format ID FROM TO are expected.
 Lines prepened by '#' are treated as comments and therefore ignored.
 If --substr-perl-style is set, the lines must start with the ID of the read,
  followed by the substr
- values OFFSET,LENGTH,REPLACESEQ,REPLACEQUAL. The parameter usage is than the 
- same as for perl builtin C<substr> function, meaning an OFFSET alone is 
- sufficient, a positive value is set from the start of the sequence, a 
+ values OFFSET,LENGTH,REPLACESEQ,REPLACEQUAL. The parameter usage is than the
+ same as for perl builtin C<substr> function, meaning an OFFSET alone is
+ sufficient, a positive value is set from the start of the sequence, a
  negative offset from the end, without LENGTH, the sequence is returned from
- OFFSET to its end. REPLACEMENTS are introduced at the OFFSET position, 
+ OFFSET to its end. REPLACEMENTS are introduced at the OFFSET position,
  if LENGTH is 0, it is a simple insertion, else a part is deleted first and
- the REPLACEMENT is then inserted. Substring extraction is of course 
+ the REPLACEMENT is then inserted. Substring extraction is of course
  performed prior to any other trimming. To trim all reads use '*' instead
- of the read id. This command will be performed prior to any indiviual 
+ of the read id. This command will be performed prior to any indiviual
  substr command.
 
   FROM TO:
     # extract sequence from pos 10 to pos 50
     read1 10 50
-  
+
   OFFSET [LENGTH [REPLACEMENT]]
     # trim read1 head and tail by 10
     read1   10
@@ -364,7 +366,7 @@ $opt{'substr=s'} = \(my $opt_substr_file = undef);
 =item [--substr-perl-style]
 
 By default, substr information are read according to the format FROM TO.
-Set this flag to switch the behaviour to perl substr() like style of 
+Set this flag to switch the behaviour to perl substr() like style of
 "OFFSET [LENGTH [REPLACEMENT]]"
 
 =cut
@@ -377,16 +379,16 @@ Report Nx value (N50, N90...). Specify multiple values as comma separated
  STRING. Takes filter settings into account. Result might be ommited if to
  few sequences are retrieved. Default "50,90".
 
-=cut 
+=cut
 
 $opt{'N=s'} = \(my $opt_N = '90,50');
 
 =item [--base-content=<BASE(S),BASE(S),BASE(S),...>]
 
-Count and print the relative amount of given bases. Takes a "," separated 
+Count and print the relative amount of given bases. Takes a "," separated
  list, each element of the list can be one or more bases. In the letter case
  the commulative amount of the individual bases is calculated.
- 
+
 Examples:
   --base-content=A,T,G,C,N   # content of regular bases
   --base-content=GC          # combined GC content
@@ -400,7 +402,7 @@ $opt{'base-content=s'} = \(my $opt_base_content = undef);
 Toggle verbose level, default 2, which outputs statistics and progress.
 Set 1 for statistics only or 0 for no verbose output.
 
-=cut 
+=cut
 
 $opt{'verbose=i'} = \(my $opt_verbose = 2);
 
@@ -448,10 +450,10 @@ if ($opt_version){
 }
 
 if($opt_max_length && $opt_min_length && ($opt_min_length > $opt_max_length)){
-	pod2usage(exitval=>1, msg=>'min-length has to be smaller than max-length'); 
+	pod2usage(exitval=>1, msg=>'min-length has to be smaller than max-length');
 }
 
-$opt_verbose = 0 if $opt_quiet; 
+$opt_verbose = 0 if $opt_quiet;
 
 
 
@@ -465,7 +467,7 @@ my $V = Verbose->new(
 	level => 1,
 	report_level => $opt_verbose,
 	line_width => 80,
-	
+
 );
 
 $V->verbose("$0-$VERSION");
@@ -482,52 +484,56 @@ $V->verbose("$0-$VERSION");
 # only one can be '-'
 my $opt_stdin;
 
+my $FH;
+my $FP;
+my $FASTQ;
 
 if($opt_in ne '-'){
-	$V->exit("Cannot find input file: $opt_in") if ! -f $opt_in;
+    open ($FH, '<', $opt_in) or $V->exit("$!: $opt_in");
 
-        if( -s $opt_in == 0){
-            $V->verbose("Empty input file: $opt_in");
-            exit(0);
-        }
-
+    if(-f $FH && -s _ == 0){
+        $V->verbose("Empty input file: $opt_in");
+        exit(0);
+    }
 }else{
-	$opt_stdin='--in';
+    $opt_stdin='--in';
+    $FH = \*STDIN;
 }
 
 # Fasta parser
 $V->verbose("--in: ".( $opt_in ne '-' ? $opt_in : "STDIN" ));
 
-my $FP;
-my $FASTQ;
+# Fasta or Fastq
+# Can't use check_format of Fasta/q Parser, because I cannot open a pipe twice
+my $c =$FH->getc(); # read first char
+$V->exit("No data at $opt_in\n") unless $c; # empty file
+$FH->ungetc(ord($c)); # unread first char
 
-if(
-	$FP = Fastq::Parser->new(
-		file => $opt_in eq '-' ? undef : $opt_in, # defaults to STDIN if undef
-	)->check_format
-){
-	$FASTQ = 1;
-	if($opt_offset){
-		$FP->phred_offset($opt_offset);
-	}else{
-		$opt_offset = $FP->guess_phred_offset 
-	};
-	pod2usage(msg=>'Could not guess phred offset, please specify manually', exitval => 2) 
-		unless $opt_offset;
-	$V->verbose('Detected FASTQ format, phred-offset '.$opt_offset);
-}elsif(
-	$FP = Fasta::Parser->new(
-		file => $opt_in eq '-' ? undef : $opt_in, # defaults to STDIN if undef
-	)->check_format
-){
-	$FASTQ = 0;
-	$V->verbose('Detected FASTA format');
-}else{
-	$V->exit(( $opt_in ? $opt_in : "STDIN" )." neither FASTA nor FASTQ") unless $FP;
+if ( $c eq '@' ){
+    $FASTQ = 1;
+    $V->verbose('Detected FASTQ format, phred-offset '.$opt_offset);
+    $FP = Fastq::Parser->new( fh => $FH );
+
+    if($opt_offset){
+        $FP->phred_offset($opt_offset);
+    }else{
+        $opt_offset = $FP->guess_phred_offset
+    };
+    pod2usage(msg=>'Could not guess phred offset, please specify manually', exitval => 2)
+        unless $opt_offset;
+
+} elsif ( $c eq '>' ){
+    $FASTQ = 0;
+    $V->verbose('Detected FASTA format');
+    $FP = Fasta::Parser->new( fh => $FH );
+
+}else {
+    $V->exit(( $opt_in ? $opt_in : "STDIN" )." neither FASTA nor FASTQ");
 }
 
-# a fix to handle gzipped files, -s doesnt work on gzip 
-my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh; 
+
+# a fix to handle gzipped files, -s doesnt work on gzip
+my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh;
 
 my $VPB = Verbose::ProgressBar->new(
 	level => 2,
@@ -544,7 +550,7 @@ if($opt_out){
 		$ofh = \*STDOUT;
 	}else{
 		open($ofh, ">", $opt_out) || $V->exit("Can't open output read file: '$opt_out'");
-	} 
+	}
 }
 
 
@@ -564,7 +570,7 @@ my %opt_fq_only = (
 
 if(!$FASTQ){
 	while (my ($k,$v) = each %opt_fq_only){
-		defined $v && $V->exit("$k can only be used on FASTQ data"); 
+		defined $v && $V->exit("$k can only be used on FASTQ data");
 	}
 }
 
@@ -622,7 +628,7 @@ if($opt_rc){
         %RC_IDS = %IDS;
     }else {
         ($opt_rc_fh, $opt_stdin) = opt2handle('--rev-comp', $opt_rc, $opt_stdin);
-        %RC_IDS = read_ids($opt_rc_fh) if $opt_rc_fh;        
+        %RC_IDS = read_ids($opt_rc_fh) if $opt_rc_fh;
     }
 }
 
@@ -646,7 +652,7 @@ if($opt_tsv){
 		$tsv = \*STDOUT;
 	}else{
 		open($tsv, ">", $opt_tsv) || $V->exit("Can't open tsv stats file: '$opt_tsv'");
-	} 
+	}
 }
 
 my @opt_mask;
@@ -657,12 +663,12 @@ if($opt_mask){
     unless (@opt_mask > 1){
         $V->exit("--phred-mask requires at least to values");
     }
-    
+
     $opt_mask_advanced = 1 if @opt_mask > 2;
     push @opt_mask, 0 while @opt_mask < 6; # make 0 default
     Fastq::Seq->Qual_lcs_range($opt_mask[FROM], $opt_mask[TO], $opt_offset);
     my $opt_mask_min =  int(($opt_mask[MASK_MIN] ? $opt_mask[MASK_MIN] + (2* $opt_mask[MASK_REDUCE]) : 1) +.5);
-    
+
     Fastq::Seq->Qual_lcs_min_length($opt_mask_min);
 }
 
@@ -716,19 +722,19 @@ my %BCs; # base contents
 LOOP: while (my $SEQ = $FP->next_seq()){
 	$total_count++;
 	$VPB->update();
-	
+
 	my $ID = $SEQ->id;
 	my $length = length($SEQ->seq);
-	
-	# TOTAL STATS		
+
+	# TOTAL STATS
 	# store length for Nx computation
 	push @total_L, $length;
 	# length stuff
 	$total_length+=$length;
 	$total_longest = $length if $length > $total_longest;
 	$total_shortest = $length if (!defined ($total_shortest) || $length < $total_shortest);
-	
-	
+
+
 	# FILTER
 	# ids
 	if(keys %IDS){
@@ -782,16 +788,16 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 			@wins ? $_->substr_seq(@wins) : ();
 		}@fq;
 	}
-	
+
 	foreach my $SEQ (@fq){
 		my $length = length($SEQ->seq);
 		# min-length/max-length
-		if($opt_min_length){ next if $length < $opt_min_length }; 
+		if($opt_min_length){ next if $length < $opt_min_length };
 		if($opt_max_length){ next if $length > $opt_max_length };
 
-		# 
+		#
 		$COUNT++;
-		
+
 		# rename ids
 		if($opt_ids_rename){
 			my $id = $SEQ->id();
@@ -810,7 +816,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		}elsif(keys %RC_IDS){
 			$SEQ->reverse_complement if $RC_IDS{$ID};
 		}
-		
+
 		# mask low quality
 		if($opt_mask){
                     if($opt_mask_advanced){
@@ -819,7 +825,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
                         $SEQ->mask_seq($SEQ->qual_lcs());
                     }
                 }
-		
+
 		# OUTPUT
 		if($ofh){
                     defined ($opt_desc_replace) && $SEQ->desc($opt_desc_replace);
@@ -832,7 +838,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 
                     $opt_lower_case && $SEQ->seq(lc($SEQ->seq));
                     $opt_upper_case && $SEQ->seq(uc($SEQ->seq));
-                    
+
                     if ($opt_fasta) {
                         print $ofh Fasta::Seq->new(
                                                    seq_head => substr ($SEQ->seq_head, 1),
@@ -849,7 +855,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
                         print $ofh $SEQ->string($opt_line_width);
                     }
 		}
-		
+
 		# OUTPUT STATS
 		# store length for Nx computation
 		push @filtered_L, $length;
@@ -943,40 +949,40 @@ if($tsv){
 
 =head2 opt2handle
 
-Use this method with options accepting <LIST/FILE/-> to decide what was 
- actually provided and to return a handle to the content. 
+Use this method with options accepting <LIST/FILE/-> to decide what was
+ actually provided and to return a handle to the content.
 
 =cut
 
 sub opt2handle{
 	my ($k, $v, $stdin) = @_;
 	my $h;
-	return unless $v; 
-	
+	return unless $v;
+
 	if($v eq '-'){
 		$V->exit("Cannot read $k from STDIN, already used with $stdin") if $stdin;
 		$h = \*STDIN;
 		$stdin = $k;
 		$V->verbose("$k: STDIN");
-	}elsif($v !~ /\n/ && -f $v){ # don't try to find file "$v" if it contains newline
+	}elsif($v !~ /\n/ && (-f $v || -p $v )){ # don't try to find file "$v" if it contains newline
 		$V->verbose("$k: $v");
 		open($h, '<', $v) or $V->exit("$!: $v");
 	}else{
 		open($h, '<', \$v) or $V->exit("$!: $v");;
 	}
-	return $h;	
+	return $h;
 }
 
 
 # DEPRECATED -> opt2handle
 #my %mf = (
-#	'--ids' => \$opt_ids, 
+#	'--ids' => \$opt_ids,
 #	'--ids_pattern' => \$opt_ids_pattern,
 #	'--substr_file' => \$opt_substr_file
 #);
 #
 #foreach(qw(--ids --ids_pattern --substr_file)){
-#	next unless ${$mf{$_}}; 
+#	next unless ${$mf{$_}};
 #	if($mf{$_} eq '-'){
 #		$V->exit("Cannot read $_ from STDIN, already used with $stdin") if $stdin;
 #		${$mf{$_}} = \*STDIN;
@@ -1015,7 +1021,7 @@ sub read_ids{
 
 =head2 read_substrs
 
-Read substr coordinate file and return 
+Read substr coordinate file and return
 
 =cut
 
@@ -1045,7 +1051,7 @@ sub read_substrs{
 			push @{$s{$id}{rc}}, 0;
 		}
 	}
-	return %s;	
+	return %s;
 }
 
 sub Nx{
@@ -1055,11 +1061,11 @@ sub Nx{
 		Nxs => [@opt_N],
 		@_
 	};
-	
+
 	my %Ns;
 	my @L = sort{$b <=> $a}@{$p->{lengths}};
 	my @ls = map{$p->{total_length} * ($_/100)}@{$p->{Nxs}};
-	
+
 	my $lc = 0;
 	foreach my $l (@L){
 		$lc+= $l;
@@ -1070,7 +1076,7 @@ sub Nx{
 		}
 	}
 	return %Ns;
-}	
+}
 
 
 sub ids_split_fh{
@@ -1086,8 +1092,8 @@ sub ids_split_fh{
 				$IDS_SPLIT{$k}{open} = 0;
 				$IDS_SPLIT_OPEN--;
 			}
-			
-			open(my $fh, '>>', ids_split_filename($match)) 
+
+			open(my $fh, '>>', ids_split_filename($match))
 				or $V->exit("$!: ".ids_split_filename($match));
 			$IDS_SPLIT{$match}{fh} = $fh;
 			$IDS_SPLIT_OPEN++;
@@ -1100,8 +1106,8 @@ sub ids_split_fh{
 			$IDS_SPLIT{$k}{open} = 0;
 			$IDS_SPLIT_OPEN--;
 		}
-		
-		open(my $fh, '>', ids_split_filename($match)) 
+
+		open(my $fh, '>', ids_split_filename($match))
 			or $V->exit("$!: ".ids_split_filename($match));
 		$IDS_SPLIT{$match}{fh} = $fh;
 		$IDS_SPLIT{$match}{open}++;
@@ -1129,10 +1135,10 @@ sub phred_mask_advanced{
 
     # $hcrs[$i][0] == $hcrs[$i][OFFSET] := offset
     # $hcrs[$i][1] == $hcrs[$i][LENGTH] := length
-    
+
     #    # clone
     #   my $fq = $fq->new;
-    # compute high coverage regions 
+    # compute high coverage regions
     my @hcrs = ($fq->qual_lcs());
         #print STDERR "PHRED MASK ADVANCED @hcrs\n";
     if (@hcrs) {
@@ -1144,9 +1150,9 @@ sub phred_mask_advanced{
 
         #hcr sticky
         foreach (@hcrs) {
-            $_->[OFFSET]+=$opt_mask[MASK_REDUCE]; 
+            $_->[OFFSET]+=$opt_mask[MASK_REDUCE];
             $_->[LENGTH]-=($opt_mask[MASK_REDUCE] * 2);
-        }	
+        }
 
         #head
         # mask/unmask start
@@ -1155,7 +1161,7 @@ sub phred_mask_advanced{
         # Consider starts shorter then lcr_min_length
         if ($lcr_start_short > 0) {
 				# unmask start if its long enough to be worth it: short < 50% lcr_min_length
-            if ( $lcr_start_short < $opt_mask[MASK_END_RATIO] * $opt_mask[UNMASK_MIN] ) { 
+            if ( $lcr_start_short < $opt_mask[MASK_END_RATIO] * $opt_mask[UNMASK_MIN] ) {
                 #$v->hline;
                 #$v->verbose('first hcr to close to start '.$lcr_start_short);
                 # if OFFSET is adjusted, LENGTH always needs to be adjusted
@@ -1172,8 +1178,8 @@ sub phred_mask_advanced{
                 $hcrs[0][LENGTH] += $hcrs[0][OFFSET];
                 $hcrs[0][OFFSET] = 0;
             }
-        } 
-			
+        }
+
         # mask/unmask end
         if ( scalar @hcrs ) { # check if there are HCRs, might be trimmed by first
             my $lcr_end_short = $opt_mask[UNMASK_MIN] - ($seq_length - ($hcrs[$#hcrs][OFFSET] + $hcrs[$#hcrs][LENGTH]));
@@ -1190,8 +1196,8 @@ sub phred_mask_advanced{
                     $hcrs[$#hcrs][LENGTH] += $opt_mask[UNMASK_MIN] - $lcr_end_short
                 }
             }
-        } 
-			
+        }
+
         # precompute changes
         my $cc=0;
         while ( @hcrs ) {
@@ -1212,10 +1218,10 @@ sub phred_mask_advanced{
                 my $hbs = $hb->[OFFSET];
                 if ((my $lcr_short = $opt_mask[UNMASK_MIN] - ($hbs - $hae)) > 0) {
                     my $lcr_short_a = int($lcr_short/2);
-                    my $lcr_short_b = $lcr_short_a + $lcr_short%2; 
+                    my $lcr_short_b = $lcr_short_a + $lcr_short%2;
                     $ha->[LENGTH] -= $lcr_short_a;
                     if ( $ha->[LENGTH] < $opt_mask[MASK_MIN] ) { # $ha is completely processed
-                        push @hcrs_short_idx, $i 
+                        push @hcrs_short_idx, $i
                     }
                     $hb->[OFFSET] += $lcr_short_b;
                     $hb->[LENGTH] -= $lcr_short_b;
@@ -1223,9 +1229,9 @@ sub phred_mask_advanced{
             }
 				# and dont forget the last hcr length
             if ( $hcrs{$i}[LENGTH] < $opt_mask[MASK_MIN] ) { # $ha is completely processed
-                push @hcrs_short_idx, $i 
+                push @hcrs_short_idx, $i
             }
-				
+
 				# skip longer adjacent
             my @hcrs_short_idx_clean;
             foreach (@hcrs_short_idx) {
@@ -1243,14 +1249,14 @@ sub phred_mask_advanced{
                     push @hcrs_short_idx_clean, $_
                 }
             }
-				
+
 				# all conflicting hcrs/lcrs trimmed
             unless(@hcrs_short_idx_clean){
                 @hcrs = @tmp_hcrs;
                 last;
             }
             ;
-				
+
 				# remove unmodified hcrs before next cycle
             my $rm_c = 0;
             foreach (@hcrs_short_idx_clean) {
@@ -1259,7 +1265,7 @@ sub phred_mask_advanced{
             }
         }
 
-	
+
         # create a description for actually masked hcrs in seq
         my $mcr_c = 0;
         my @mcrs_string = map{"MCR".++$mcr_c.":".$_->[OFFSET].','.$_->[LENGTH]}@hcrs;
