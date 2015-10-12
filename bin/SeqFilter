@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Getopt::Long;
+Getopt::Long::Configure ("bundling");
 use Pod::Usage;
 
 use FindBin qw($RealBin);
@@ -820,27 +821,27 @@ sub init{
                      desc_append|desc-append=s
                      min_length|min-length=i
                      max_length|max-length=i
-                     fasta
-                     fastq=s
-                     line_width|line-width=i
+                     fasta|A
+                     fastq|Q=s
+                     line_width|line-width|w=i
                      rc|rev_comp|rev-comp=s
-                     check_format|check-format!
-                     lower_case|lower-case!
-                     upper_case|upper-case!
-                     iupac_to_N|iupac-to-N!
+                     check_format|check-format
+                     lower_case|lower-case
+                     upper_case|upper-case
+                     iupac_to_N|iupac-to-N
                      phred_offset|phred-offset=i
                      phred_transform|phred-transform
                      phred_mask|phred-mask=s
                      trim_window|trim-window=s
                      trim_lcs|trim-lcs=s
                      substr=s
-                     substr_perl_style|substr-perl-style!
+                     substr_perl_style|substr-perl-style
                      N=s
                      base_content|base-content=s
                      verbose=i
-                     quiet
-                     help|?
-                     version|V
+                     quiet|q!
+                     help|h!
+                     version|V!
              )
     ) or pod2usage(-verbose => 0, -exitval => 1);
 
@@ -849,8 +850,8 @@ sub init{
 	#push @{$opt{in}}, @ARGV;
     }
 
-    $opt{help} && pod2usage;
-    $opt{version} && print "$VERSION\n" && exit(0);
+    $opt{help} && pod2usage(1);
+    if ($opt{version}){ print "$VERSION\n"; exit(0) };
     $opt{verbose} = 0 if $opt{quiet};
 
     %opt = (%def, %opt);
