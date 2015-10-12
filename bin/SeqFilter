@@ -355,7 +355,7 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
     my $FP = ${$opt{fps}}[$i];
 
-# a fix to handle gzipped files, -s doesnt work on gzip
+    # a fix to handle gzipped files, -s doesnt work on gzip
     my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh;
 
     my $VPB = Verbose::ProgressBar->new(
@@ -365,13 +365,7 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 	_fh => $FP->fh(),
     );
 
-
-
-=head2 loop through file and apply filter
-
-=cut
-
-    # loop through FASTQ
+    #loop through file and apply filter
  LOOP: while (my $SEQ = $FP->next_seq()){
 	$total_count++;
 	$VPB->update();
@@ -778,9 +772,9 @@ sub init_input{
     my $FASTQ;
     my $f;
     foreach ( @{$opt{ifhs}}) {
-        my $c =$_->getc();                          # read first char
+        my $c =$_->getc();                           # read first char
         $V->exit("No data at $opt{in}\n") unless $c; # empty file
-        $_->ungetc(ord($c));                        # unread first char
+        $_->ungetc(ord($c));                         # unread first char
         $f.=$c;
     }
 
@@ -910,31 +904,6 @@ sub opt2handle{
 }
 
 
-# DEPRECATED -> opt2handle
-#my %mf = (
-#	'--ids' => \$opt{ids},
-#	'--ids_pattern' => \$opt{ids_pattern},
-#	'--substr_file' => \$opt{substr_file}
-#);
-#
-#foreach(qw(--ids --ids_pattern --substr_file)){
-#	next unless ${$mf{$_}};
-#	if($mf{$_} eq '-'){
-#		$V->exit("Cannot read $_ from STDIN, already used with $stdin") if $stdin;
-#		${$mf{$_}} = \*STDIN;
-#		$stdin = $_;
-#		$V->verbose("$_: STDIN");
-#	}elsif(-f ${$mf{$_}}){
-#		$V->verbose("$_: ${$mf{$_}}");
-#		open(my $fh, '<', $_);
-#		${$mf{$_}} = $fh;
-#	}else{
-#		open(my $fh, '<', \$_);
-#		${$mf{$_}} = $fh;
-#	}
-#}
-
-
 =head2 read_ids
 
 =cut
@@ -952,7 +921,6 @@ sub read_ids{
 	@IDS{@IDS}=map{1}@IDS;
 	return %IDS;
 }
-
 
 
 =head2 read_substrs
@@ -1210,11 +1178,3 @@ sub phred_mask_advanced{
         $fq->mask_seq(@hcrs) if @hcrs;
     }
 }
-
-
-
-=head1 AUTHOR
-
-Thomas Hackl S<thomas.hackl@uni-wuerzburg.de>
-
-=cut
