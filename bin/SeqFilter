@@ -349,19 +349,21 @@ my %BCs; # base contents
 
 # foreach file
 
-$V->verbose("--in: ".( $opt{in} ne '-' ? $opt{in} : "STDIN" ));
+for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
-my $FP = ${$opt{fps}}[0];
+    $V->verbose("--in: ".( $opt{_in}[$i] ne '-' ? $opt{_in}[$i] : "STDIN" ));
+
+    my $FP = ${$opt{fps}}[$i];
 
 # a fix to handle gzipped files, -s doesnt work on gzip
-my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh;
+    my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh;
 
-my $VPB = Verbose::ProgressBar->new(
+    my $VPB = Verbose::ProgressBar->new(
 	level => 2,
 	report_level => $opt{verbose},
 	size => $file_size, # size and _fh required for gzip fix
 	_fh => $FP->fh(),
-);
+    );
 
 
 
@@ -369,8 +371,8 @@ my $VPB = Verbose::ProgressBar->new(
 
 =cut
 
-# loop through FASTQ
-LOOP: while (my $SEQ = $FP->next_seq()){
+    # loop through FASTQ
+ LOOP: while (my $SEQ = $FP->next_seq()){
 	$total_count++;
 	$VPB->update();
 
@@ -388,12 +390,12 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 
 	# FILTER
 	# ids
-	if(keys %IDS){
-		if ($opt{ids_exclude}){
-			next if $IDS{$ID}
-		}else{
-			next unless $IDS{$ID}
-		}
+	if (keys %IDS) {
+            if ($opt{ids_exclude}) {
+                next if $IDS{$ID}
+            } else {
+                next unless $IDS{$ID}
+            }
 	}
 
 	if (@IDS_PATTERS) {
@@ -412,17 +414,18 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 
 	my @fq = ($SEQ);
 
-	if($opt{substr_file}){
+	if ($opt{substr_file}) {
 	    my @tmp;
-	    foreach my $x ('*',$ID){
-		if(exists $SUBSTR{$x} ){
-		    foreach my $fq (@fq){
+	    foreach my $x ('*',$ID) {
+		if (exists $SUBSTR{$x} ) {
+		    foreach my $fq (@fq) {
 			my @subs = $fq->substr_seq(@{$SUBSTR{$x}{coords}});
-			for(my $i=0; $i<@subs; $i++){
+			for (my $i=0; $i<@subs; $i++) {
 			    $subs[$i]->reverse_complement() if $SUBSTR{$x}{rc}[$i]
 			}
 			push @tmp, @subs;
-		    };
+		    }
+                    ;
 
 		}
 	    }
@@ -430,96 +433,102 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 	}
 
 	# slice by lcs
-	if($opt{trim_lcs}){ # trim lcs
-		@fq = map{$_->substr_qual_lcs(1)}@fq;
+	if ($opt{trim_lcs}) { # trim lcs
+            @fq = map{$_->substr_qual_lcs(1)}@fq;
 	}
-	if($opt{trim_window}){ # trim window
-		@fq = map{
-			my @wins = $_->qual_window(1);
-			@wins ? $_->substr_seq(@wins) : ();
-		}@fq;
+	if ($opt{trim_window}) { # trim window
+            @fq = map{
+                my @wins = $_->qual_window(1);
+                @wins ? $_->substr_seq(@wins) : ();
+            }@fq;
 	}
 
-	foreach my $SEQ (@fq){
-		my $length = length($SEQ->seq);
-		# min-length/max-length
-		if($opt{min_length}){ next if $length < $opt{min_length} };
-		if($opt{max_length}){ next if $length > $opt{max_length} };
+	foreach my $SEQ (@fq) {
+            my $length = length($SEQ->seq);
+            # min-length/max-length
+            if ($opt{min_length}) {
+                next if $length < $opt{min_length};
+            }
+            ;
+            if ($opt{max_length}) {
+                next if $length > $opt{max_length};
+            }
+            ;
 
-		#
-		$COUNT++;
+            #
+            $COUNT++;
 
-		# rename ids
-		if($opt{ids_rename}){
-			my $id = $SEQ->id();
-			my $PICARD = '';
-			if($FASTQ){
-			    $PICARD = $SEQ->picard() || '';
-			}
-			eval '$id =~ '.$opt{ids_rename};
-			$V->exit("Evaluation --ids-rename pattern failed. Make sure it is a valid perl substitution pattern\n".$@) if $@;
-			$SEQ->id($id);
-		}
-
-		# reverse complement
-		if($RC_ALL){
-			$SEQ->reverse_complement;
-		}elsif(keys %RC_IDS){
-			$SEQ->reverse_complement if $RC_IDS{$ID};
-		}
-
-		# mask low quality
-		if($opt{phred_mask}){
-                    if($opt{mask_advanced}){
-                        phred_mask_advanced($SEQ);
-                    }else{
-                        $SEQ->mask_seq($SEQ->qual_lcs());
-                    }
+            # rename ids
+            if ($opt{ids_rename}) {
+                my $id = $SEQ->id();
+                my $PICARD = '';
+                if ($FASTQ) {
+                    $PICARD = $SEQ->picard() || '';
                 }
+                eval '$id =~ '.$opt{ids_rename};
+                $V->exit("Evaluation --ids-rename pattern failed. Make sure it is a valid perl substitution pattern\n".$@) if $@;
+                $SEQ->id($id);
+            }
 
-		# OUTPUT
-		if($ofh){
-                    defined ($opt{desc_replace}) && $SEQ->desc($opt{desc_replace});
-                    $opt{desc_append} && $SEQ->desc_append($opt{desc_append});
+            # reverse complement
+            if ($RC_ALL) {
+                $SEQ->reverse_complement;
+            } elsif (keys %RC_IDS) {
+                $SEQ->reverse_complement if $RC_IDS{$ID};
+            }
 
-                    # this it the fastest and most efficent way,
-                    # however direct pointer access to seq might is
-                    # vulnerable
-                    $opt{iupac_to_N} && $SEQ->{seq} =~ tr/ATGCNatgcn/N/c;
+            # mask low quality
+            if ($opt{phred_mask}) {
+                if ($opt{mask_advanced}) {
+                    phred_mask_advanced($SEQ);
+                } else {
+                    $SEQ->mask_seq($SEQ->qual_lcs());
+                }
+            }
 
-                    $opt{lower_case} && $SEQ->seq(lc($SEQ->seq));
-                    $opt{upper_case} && $SEQ->seq(uc($SEQ->seq));
+            # OUTPUT
+            if ($ofh) {
+                defined ($opt{desc_replace}) && $SEQ->desc($opt{desc_replace});
+                $opt{desc_append} && $SEQ->desc_append($opt{desc_append});
 
-                    if ($opt{fasta}) { # convert fastq to fasta
-                        print $ofh $SEQ->string(fasta => 1, line_width => $opt{line_width});
-                    } elsif ($opt{fastq}) { # convert fasta to fastq
-                        print $ofh $SEQ->string(fastq => $opt{fastq});
-                    } elsif ($opt{phred_transform}) { # convert phred
-                        print $ofh $SEQ->phred_transform()->string();
-                    } else {
-                        print $ofh $SEQ->string($opt{line_width});
-                    }
-		}
+                # this it the fastest and most efficent way,
+                # however direct pointer access to seq might is
+                # vulnerable
+                $opt{iupac_to_N} && $SEQ->{seq} =~ tr/ATGCNatgcn/N/c;
 
-		# OUTPUT STATS
-		# store length for Nx computation
-		push @filtered_L, $length;
-		# length stuff
-		$filtered_length+=$length;
-		$filtered_longest = $length if $length > $filtered_longest;
-		$filtered_shortest = $length if (!defined ($filtered_shortest) || $length < $filtered_shortest);
-		# base content
-		if($opt{base_content}){
-			foreach (@{$opt{_base_content}}){
-				$BCs{$_} += $SEQ->base_content($_);
-			}
-		}
+                $opt{lower_case} && $SEQ->seq(lc($SEQ->seq));
+                $opt{upper_case} && $SEQ->seq(uc($SEQ->seq));
+
+                if ($opt{fasta}) { # convert fastq to fasta
+                    print $ofh $SEQ->string(fasta => 1, line_width => $opt{line_width});
+                } elsif ($opt{fastq}) { # convert fasta to fastq
+                    print $ofh $SEQ->string(fastq => $opt{fastq});
+                } elsif ($opt{phred_transform}) { # convert phred
+                    print $ofh $SEQ->phred_transform()->string();
+                } else {
+                    print $ofh $SEQ->string($opt{line_width});
+                }
+            }
+
+            # OUTPUT STATS
+            # store length for Nx computation
+            push @filtered_L, $length;
+            # length stuff
+            $filtered_length+=$length;
+            $filtered_longest = $length if $length > $filtered_longest;
+            $filtered_shortest = $length if (!defined ($filtered_shortest) || $length < $filtered_shortest);
+            # base content
+            if ($opt{base_content}) {
+                foreach (@{$opt{_base_content}}) {
+                    $BCs{$_} += $SEQ->base_content($_);
+                }
+            }
 	}
+    }
+
+    #TODO: adjust to file_s
+    $VPB->finish($file_size);
 }
-
-#TODO: adjust to file_s
-$VPB->finish($file_size);
-
 
 =head2 print summary
 
