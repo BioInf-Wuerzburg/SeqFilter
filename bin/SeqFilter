@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '1.8.0';
+our $VERSION = '1.8.1';
 
 =head1 NAME
 
@@ -60,9 +60,9 @@ Thomas Hackl - S<thackl@lim4.de>
 
 Input FASTA/FASTQ file. Default STDIN.
 
-=item [--out=<FILE/->]
+=item [--out=<FILE/->] -c/--stdout
 
-Output file. Default off. Specify '-' for STDOUT.
+Output to file. Default off. Specify -o - or shorter -c for STDOUT.
 
 =item [--tsv=<STRING/->]
 
@@ -387,11 +387,11 @@ my $VPB = Verbose::ProgressBar->new(
 # output file
 my $ofh;
 if($opt{out}){
-	if($opt{out} eq '-'){
-		$ofh = \*STDOUT;
-	}else{
-		open($ofh, ">", $opt{out}) || $V->exit("Can't open output read file: '$opt{out}'");
-	}
+    if($opt{out} eq '-'){
+        $ofh = \*STDOUT;
+    }else{
+        open($ofh, ">", $opt{out}) || $V->exit("Can't open output read file: '$opt{out}'");
+    }
 }
 
 
@@ -790,19 +790,6 @@ Read and process options
 sub init{
     no warnings 'qw';
 
-    my (%p) = @_;
-
-
-# $opt{'in=s'} = \(my $opt{in} = '-');
-# $opt{'tsv=s'} = \(my $opt{tsv} = '');
-# $opt{'ids=s'} = \(my $opt{ids} = '');
-# $opt{'ids-exclude'} = \(my $opt{ids_exclude} = 0);
-# $opt{'min-length=i'} = \(my $opt{min_length} = 0);
-# $opt{'line-width=i'} = \(my $opt{line_width} = 80);
-# $opt{'rev-comp=s'} = \(my $opt{rc} = '');
-# $opt{'N=s'} = \(my $opt{N} = '90,50');
-# $opt{'verbose=i'} = \(my $opt{verbose} = 2);
-
     # GetOptions
     my %def = (
         argv => join(" ", @ARGV),
@@ -821,7 +808,8 @@ sub init{
     GetOptions(
         \%opt, qw(
                      in=s
-                     out:s
+                     out=s
+                     stdout|c
                      tsv=s
                      ids=s
                      ids_exclude|ids-exclude
@@ -869,6 +857,11 @@ sub init{
 
     if($opt{max_length} && $opt{min_length} && ($opt{min_length} > $opt{max_length})){
 	pod2usage(exitval=>1, msg=>'min-length has to be smaller than max-length');
+    }
+
+    if ($opt{stdout}){
+	pod2usage(exitval=>1, msg=>'Specify either --out or --stdout') if $opt{out};
+        $opt{out} = '-';
     }
 
     return %opt;
