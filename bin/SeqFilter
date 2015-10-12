@@ -16,10 +16,10 @@ use Verbose;
 use Verbose::ProgressBar;
 
 use Fastq::Parser 0.10.0;
-use Fastq::Seq 0.13.3;
+use Fastq::Seq 0.13.4;
 
 use Fasta::Parser 0.08;
-use Fasta::Seq 0.9.0;
+use Fasta::Seq 0.9.1;
 
 use constant {
                  OFFSET => 0,
@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '1.7.2';
+our $VERSION = '1.7.3';
 
 =head1 NAME
 
@@ -516,12 +516,11 @@ if ( $c eq '@' ){
     if($opt_offset){
         $FP->phred_offset($opt_offset);
     }else{
-        $opt_offset = $FP->guess_phred_offset
+        $opt_offset = $FP->guess_phred_offset;
+        $FP->phred_offset(33); # use 33 as undef breaks parser
     };
-    pod2usage(msg=>'Could not guess phred offset, please specify manually', exitval => 2)
-        unless $opt_offset;
 
-    $V->verbose('Detected FASTQ format, phred-offset '.$opt_offset);
+    $V->verbose('Detected FASTQ format, phred-offset '.($opt_offset || "NA"));
 
 } elsif ( $c eq '>' ){
     $FASTQ = 0;
@@ -582,6 +581,14 @@ if($FASTQ){
     while (my ($k,$v) = each %opt_fa_only){
         defined $v && $V->exit("$k can only be used on FASTA data");
     }
+
+    unless ($opt_offset){ # check phred offset if offset specific filters are used
+        while (my ($k,$v) = each %opt_fq_only){
+            defined $v && $V->exit("Could not guess phred offset, but required by $k.\n Please specify manually via --phred-offset")
+	}
+    }
+
+    $opt_line_width = undef unless $opt_fasta; # unset line width for fastq output
 }
 
 
@@ -834,17 +841,11 @@ LOOP: while (my $SEQ = $FP->next_seq()){
                     $opt_lower_case && $SEQ->seq(lc($SEQ->seq));
                     $opt_upper_case && $SEQ->seq(uc($SEQ->seq));
 
-                    if ($opt_fasta) {
-                        print $ofh Fasta::Seq->new(
-                                                   seq_head => substr ($SEQ->seq_head, 1),
-                                                   seq => $SEQ->seq,
-                                                  )->string($opt_line_width);
-                    } elsif ($opt_fastq) {
-                        print $ofh '@', substr ($SEQ->seq_head, 1),"\n",
-                                   $SEQ->seq,"\n",
-                                   "+","\n",
-                                   $opt_fastq x length($SEQ->seq),"\n";
-                    } elsif ($opt_transform) {
+                    if ($opt_fasta) { # convert fastq to fasta
+                        print $ofh $SEQ->string(fasta => 1, line_width => $opt_line_width);
+                    } elsif ($opt_fastq) { # convert fasta to fastq
+                        print $ofh $SEQ->string(fastq => $opt_fastq);
+                    } elsif ($opt_transform) { # convert phred
                         print $ofh $SEQ->phred_transform()->string();
                     } else {
                         print $ofh $SEQ->string($opt_line_width);
