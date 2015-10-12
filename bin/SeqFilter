@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '1.7.3';
+our $VERSION = '1.8.0';
 
 =head1 NAME
 
@@ -299,72 +299,17 @@ Display current version
 =cut
 
 
-my %opt;
-$opt{'in=s'} = \(my $opt_in = '-');
-$opt{'out=s'} = \(my $opt_out = undef);
-$opt{'tsv=s'} = \(my $opt_tsv = '');
-$opt{'ids=s'} = \(my $opt_ids = '');
-$opt{'ids-exclude'} = \(my $opt_ids_exclude = 0);
-$opt{'ids-pattern=s'} = \(my $opt_ids_pattern = undef);
-$opt{'ids-split'} = \(my $opt_ids_split = undef);
-$opt{'ids-rename=s'} = \(my $opt_ids_rename = undef);
-$opt{'desc-replace:s'} = \(my $opt_desc_replace = undef);
-$opt{'desc-append=s'} = \(my $opt_desc_append = undef);
-$opt{'min-length=i'} = \(my $opt_min_length = 0);
-$opt{'max-length=i'} = \(my $opt_max_length = undef);
-$opt{'fasta'} = \(my $opt_fasta = undef);
-$opt{'fastq=s'} = \(my $opt_fastq = undef);
-$opt{'line-width=i'} = \(my $opt_line_width = 80);
-$opt{'rev-comp=s'} = \(my $opt_rc = '');
-$opt{'check-format!'} = \(my $opt_check_format = undef);
-$opt{'lower-case!'} = \(my $opt_lower_case = undef);
-$opt{'upper-case!'} = \(my $opt_upper_case = undef);
-$opt{'iupac-to-N!'} = \(my $opt_iupac_to_N = undef);
-$opt{'phred-offset=i'} = \(my $opt_offset);
-$opt{'phred-transform'} = \(my $opt_transform);
-$opt{'phred-mask=s'} = \(my $opt_mask = undef);
-$opt{'trim-window=s'} = \(my $opt_trim = undef);
-$opt{'trim-lcs=s'} = \(my $opt_slice_lcs = undef);
-$opt{'substr=s'} = \(my $opt_substr_file = undef);
-$opt{'substr-perl-style!'} = \(my $opt_substr_perl);
-$opt{'N=s'} = \(my $opt_N = '90,50');
-$opt{'base-content=s'} = \(my $opt_base_content = undef);
-$opt{'verbose=i'} = \(my $opt_verbose = 2);
-$opt{'quiet'} = \(my $opt_quiet);
-$opt{'help|?'} = \(my $opt_help);
-$opt{'version|V'} = \(my $opt_version);
-
-
-
-
-GetOptions(%opt) or pod2usage(1);
-if(@ARGV && !($ARGV[0] =~ /^-/)){
-	$opt_in = $ARGV[0];
-}
-
-pod2usage(1) if $opt_help;
-if ($opt_version){
-	print "$VERSION\n";
-	exit(1);
-}
-
-if($opt_max_length && $opt_min_length && ($opt_min_length > $opt_max_length)){
-	pod2usage(exitval=>1, msg=>'min-length has to be smaller than max-length');
-}
-
-$opt_verbose = 0 if $opt_quiet;
-
-
-
 ##------------------------------------------------------------------------##
 
 =head1 MAIN
 
 =cut
 
+my %opt = init();
+
 my $V = Verbose->new(
 	level => 1,
-	report_level => $opt_verbose,
+	report_level => $opt{verbose},
 	line_width => 80,
 );
 
@@ -378,54 +323,53 @@ $V->verbose("$0-$VERSION");
 =cut
 
 # check STDIN, check files
-# $opt_in, $opt_ids, $opt_ids_pattern, $opt_substr_file
+# $opt{in}, $opt{ids}, $opt{ids_pattern}, $opt{substr_file}
 # only one can be '-'
-my $opt_stdin;
 
 my $FH;
 my $FP;
 my $FASTQ;
 
-if($opt_in ne '-'){
-    open ($FH, '<', $opt_in) or $V->exit("$!: $opt_in");
+if($opt{in} ne '-'){
+    open ($FH, '<', $opt{in}) or $V->exit("$!: $opt{in}");
 
     if(-f $FH && -s _ == 0){
-        $V->verbose("Empty input file: $opt_in");
+        $V->verbose("Empty input file: $opt{in}");
         exit(0);
     }
 }else{
-    $opt_stdin='--in';
+    $opt{stdin}='--in';
     $FH = \*STDIN;
 }
 
 # Fasta parser
-$V->verbose("--in: ".( $opt_in ne '-' ? $opt_in : "STDIN" ));
+$V->verbose("--in: ".( $opt{in} ne '-' ? $opt{in} : "STDIN" ));
 
 # Fasta or Fastq
 # Can't use check_format of Fasta/q Parser, because I cannot open a pipe twice
 my $c =$FH->getc(); # read first char
-$V->exit("No data at $opt_in\n") unless $c; # empty file
+$V->exit("No data at $opt{in}\n") unless $c; # empty file
 $FH->ungetc(ord($c)); # unread first char
 
 if ( $c eq '@' ){
     $FASTQ = 1;
     $FP = Fastq::Parser->new( fh => $FH );
 
-    if($opt_offset){
-        $FP->phred_offset($opt_offset);
+    if($opt{phred_offset}){
+        $FP->phred_offset($opt{phred_offset});
     }else{
-        $opt_offset = $FP->guess_phred_offset;
+        $opt{phred_offset} = $FP->guess_phred_offset;
         $FP->phred_offset(33); # use 33 as undef breaks parser
     };
 
-    $V->verbose('Detected FASTQ format, phred-offset '.($opt_offset || "NA"));
+    $V->verbose('Detected FASTQ format, phred-offset '.($opt{phred_offset} || "NA"));
 
 } elsif ( $c eq '>' ){
     $FASTQ = 0;
     $FP = Fasta::Parser->new( fh => $FH );
     $V->verbose('Detected FASTA format');
 }else {
-    $V->exit(( $opt_in ? $opt_in : "STDIN" )." neither FASTA nor FASTQ");
+    $V->exit(( $opt{in} ? $opt{in} : "STDIN" )." neither FASTA nor FASTQ");
 }
 
 
@@ -434,7 +378,7 @@ my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh;
 
 my $VPB = Verbose::ProgressBar->new(
 	level => 2,
-	report_level => $opt_verbose,
+	report_level => $opt{verbose},
 	size => $file_size, # size and _fh required for gzip fix
 	_fh => $FP->fh(),
 );
@@ -442,11 +386,11 @@ my $VPB = Verbose::ProgressBar->new(
 
 # output file
 my $ofh;
-if($opt_out){
-	if($opt_out eq '-'){
+if($opt{out}){
+	if($opt{out} eq '-'){
 		$ofh = \*STDOUT;
 	}else{
-		open($ofh, ">", $opt_out) || $V->exit("Can't open output read file: '$opt_out'");
+		open($ofh, ">", $opt{out}) || $V->exit("Can't open output read file: '$opt{out}'");
 	}
 }
 
@@ -458,11 +402,11 @@ if($opt_out){
 =cut
 
 my %opt_fq_only = (
-	'phred-transform' => $opt_transform,
-	'phred-mask' => $opt_mask,
-	'trim-window' => $opt_trim,
-	'trim-lcs' => $opt_slice_lcs,
-	'check-format' => $opt_check_format,
+	'phred-transform' => $opt{transform},
+	'phred-mask' => $opt{mask},
+	'trim-window' => $opt{trim_window},
+	'trim-lcs' => $opt{trim_lcs},
+	'check-format' => $opt{check_format},
 );
 
 if(!$FASTQ){
@@ -472,7 +416,7 @@ if(!$FASTQ){
 }
 
 my %opt_fa_only = (
-        'fastq' => $opt_fastq,
+        'fastq' => $opt{fastq},
 );
 
 if($FASTQ){
@@ -480,13 +424,13 @@ if($FASTQ){
         defined $v && $V->exit("$k can only be used on FASTA data");
     }
 
-    unless ($opt_offset){ # check phred offset if offset specific filters are used
+    unless ($opt{phred_offset}){ # check phred offset if offset specific filters are used
         while (my ($k,$v) = each %opt_fq_only){
             defined $v && $V->exit("Could not guess phred offset, but required by $k.\n Please specify manually via --phred-offset")
 	}
     }
 
-    $opt_line_width = undef unless $opt_fasta; # unset line width for fastq output
+    $opt{line_width} = undef unless $opt{fasta}; # unset line width for fastq output
 }
 
 
@@ -496,13 +440,12 @@ if($FASTQ){
 
 =cut
 
-my ($opt_ids_fh, $opt_rc_fh, $opt_ids_pattern_fh, $opt_substr_fh);
-($opt_ids_fh, $opt_stdin) = opt2handle('--ids',$opt_ids, $opt_stdin);
-($opt_ids_pattern_fh, $opt_stdin) = opt2handle('--ids-pattern',$opt_ids_pattern, $opt_stdin);
-($opt_substr_fh, $opt_stdin) = opt2handle('--substr-file', $opt_substr_file, $opt_stdin);
+($opt{ids_fh}, $opt{stdin}) = opt2handle('--ids',$opt{ids}, $opt{stdin});
+($opt{ids_pattern_fh}, $opt{stdin}) = opt2handle('--ids-pattern',$opt{ids_pattern}, $opt{stdin});
+($opt{substr_fh}, $opt{stdin}) = opt2handle('--substr-file', $opt{substr_file}, $opt{stdin});
 
 
-my %IDS = read_ids($opt_ids_fh) if $opt_ids;
+my %IDS = read_ids($opt{ids_fh}) if $opt{ids};
 
 
 # store filehandles for split pattern
@@ -510,7 +453,7 @@ my %IDS_SPLIT;
 my $IDS_SPLIT_OPEN = 0;
 my $IDS_SPLIT_MATCH;
 
-my ($IN_BASE, $IN_PATH, $IN_SUFFIX) = ($opt_stdin && $opt_stdin eq '--in') ? ('', '', '') : fileparse($opt_in, qw(.fa .fasta .fq .fastq .FA .FASTA .FQ .FASTQ) );
+my ($IN_BASE, $IN_PATH, $IN_SUFFIX) = ($opt{stdin} && $opt{stdin} eq '--in') ? ('', '', '') : fileparse($opt{in}, qw(.fa .fasta .fq .fastq .FA .FASTA .FQ .FASTQ) );
 unless($IN_SUFFIX){
 	$IN_SUFFIX = $FASTQ ? '.fq' :  '.fa';
 }
@@ -518,24 +461,24 @@ unless($IN_SUFFIX){
 
 my %RC_IDS;
 my $RC_ALL;
-if($opt_rc){
-    if($opt_rc eq '*'){
+if($opt{rc}){
+    if($opt{rc} eq '*'){
         $RC_ALL++;
-    }elsif($opt_rc eq '-' && $opt_ids eq '-'){
-        if($opt_ids_exclude){
+    }elsif($opt{rc} eq '-' && $opt{ids} eq '-'){
+        if($opt{ids_exclude}){
             $V->exit("It does not make sense to rev-comp the same ids you are going to exclude!");
         }
         %RC_IDS = %IDS;
     }else {
-        ($opt_rc_fh, $opt_stdin) = opt2handle('--rev-comp', $opt_rc, $opt_stdin);
-        %RC_IDS = read_ids($opt_rc_fh) if $opt_rc_fh;
+        ($opt{rc_fh}, $opt{stdin}) = opt2handle('--rev-comp', $opt{rc}, $opt{stdin});
+        %RC_IDS = read_ids($opt{rc_fh}) if $opt{rc_fh};
     }
 }
 
 
-(my @IDS_PATTERS = <$opt_ids_pattern_fh>) if $opt_ids_pattern;
+(my @IDS_PATTERS = <$opt{ids_pattern_fh}>) if $opt{ids_pattern};
 chomp(@IDS_PATTERS);
-my %SUBSTR = read_substrs($opt_substr_fh) if $opt_substr_file;
+my %SUBSTR = read_substrs($opt{substr_fh}) if $opt{substr_file};
 
 ##------------------------------------------------------------------------##
 
@@ -543,53 +486,52 @@ my %SUBSTR = read_substrs($opt_substr_fh) if $opt_substr_file;
 
 =cut
 
-my @opt_base_content = split(/\s*,\s*/, $opt_base_content) if $opt_base_content;
-my @opt_N = sort{$a <=> $b}(split(/\s*,\s*/, $opt_N)) if $opt_N;
+my @opt_base_content = split(/\s*,\s*/, $opt{base_content}) if $opt{base_content};
+my @opt_N = sort{$a <=> $b}(split(/\s*,\s*/, $opt{N})) if $opt{N};
 
 my $tsv;
-if($opt_tsv){
-	if($opt_tsv eq '-' && (!defined($opt_out) || $opt_out ne '-')){
+if($opt{tsv}){
+	if($opt{tsv} eq '-' && (!defined($opt{out}) || $opt{out} ne '-')){
 		$tsv = \*STDOUT;
 	}else{
-		open($tsv, ">", $opt_tsv) || $V->exit("Can't open tsv stats file: '$opt_tsv'");
+		open($tsv, ">", $opt{tsv}) || $V->exit("Can't open tsv stats file: '$opt{tsv}'");
 	}
 }
 
 my @opt_mask;
-my $opt_mask_advanced;
-if($opt_mask){
+if($opt{mask}){
 
-    @opt_mask = split(',', $opt_mask);
+    @opt_mask = split(',', $opt{mask});
     unless (@opt_mask > 1){
         $V->exit("--phred-mask requires at least to values");
     }
 
-    $opt_mask_advanced = 1 if @opt_mask > 2;
+    $opt{mask_advanced} = 1 if @opt_mask > 2;
     push @opt_mask, 0 while @opt_mask < 6; # make 0 default
-    Fastq::Seq->Qual_lcs_range($opt_mask[FROM], $opt_mask[TO], $opt_offset);
-    my $opt_mask_min =  int(($opt_mask[MASK_MIN] ? $opt_mask[MASK_MIN] + (2* $opt_mask[MASK_REDUCE]) : 1) +.5);
+    Fastq::Seq->Qual_lcs_range($opt{mask}[FROM], $opt{mask}[TO], $opt{phred_offset});
+    $opt{mask_min} =  int(($opt{mask}[MASK_MIN] ? $opt{mask}[MASK_MIN] + (2* $opt{mask}[MASK_REDUCE]) : 1) +.5);
 
-    Fastq::Seq->Qual_lcs_min_length($opt_mask_min);
+    Fastq::Seq->Qual_lcs_min_length($opt{mask_min});
 }
 
-if($opt_slice_lcs){
-	my($from, $to, $length) = split('\s*,\s*', $opt_slice_lcs);
-	Fastq::Seq->Qual_lcs_range($from, $to, $opt_offset);
+if($opt{trim_lcs}){
+	my($from, $to, $length) = split('\s*,\s*', $opt{trim_lcs});
+	Fastq::Seq->Qual_lcs_range($from, $to, $opt{phred_offset});
 	Fastq::Seq->Qual_lcs_min_length($length);
 }
 
-if($opt_trim){
-	my ($soft_min, $hard_min, $wsize) = (split(',', $opt_trim), 0, 10);
+if($opt{trim_window}){
+	my ($soft_min, $hard_min, $wsize) = (split(',', $opt{trim_window}), 0, 10);
 	Fastq::Seq->Qual_window_min_score_soft($soft_min);
 	Fastq::Seq->Qual_window_min_score_hard($hard_min);
 	Fastq::Seq->Qual_window_size($wsize);
 }
 
-if($opt_check_format){
+if($opt{check_format}){
 	Fastq::Seq->CheckFormat(1);
 }
 
-if($opt_fastq && length $opt_fastq != 1){
+if($opt{fastq} && length $opt{fastq} != 1){
     $V->exit("--fastq needs to be a single character!");
 }
 
@@ -638,7 +580,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 	# FILTER
 	# ids
 	if(keys %IDS){
-		if ($opt_ids_exclude){
+		if ($opt{ids_exclude}){
 			next if $IDS{$ID}
 		}else{
 			next unless $IDS{$ID}
@@ -649,19 +591,19 @@ LOOP: while (my $SEQ = $FP->next_seq()){
             my $matched = 0;
             foreach my $patt (@IDS_PATTERS) {
                 $matched = 1 if $ID =~m/$patt/;
-                if ($opt_ids_split) {
+                if ($opt{ids_split}) {
                     next unless $1;
                     $ofh = ids_split_fh($1);
                 }
                 last if $matched;
             }
-            next LOOP if $matched == $opt_ids_exclude;
+            next LOOP if $matched == $opt{ids_exclude};
 	}
 
 
 	my @fq = ($SEQ);
 
-	if($opt_substr_file){
+	if($opt{substr_file}){
 	    my @tmp;
 	    foreach my $x ('*',$ID){
 		if(exists $SUBSTR{$x} ){
@@ -679,10 +621,10 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 	}
 
 	# slice by lcs
-	if($opt_slice_lcs){ # trim lcs
+	if($opt{trim_lcs}){ # trim lcs
 		@fq = map{$_->substr_qual_lcs(1)}@fq;
 	}
-	if($opt_trim){ # trim window
+	if($opt{trim_window}){ # trim window
 		@fq = map{
 			my @wins = $_->qual_window(1);
 			@wins ? $_->substr_seq(@wins) : ();
@@ -692,20 +634,20 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 	foreach my $SEQ (@fq){
 		my $length = length($SEQ->seq);
 		# min-length/max-length
-		if($opt_min_length){ next if $length < $opt_min_length };
-		if($opt_max_length){ next if $length > $opt_max_length };
+		if($opt{min_length}){ next if $length < $opt{min_length} };
+		if($opt{max_length}){ next if $length > $opt{max_length} };
 
 		#
 		$COUNT++;
 
 		# rename ids
-		if($opt_ids_rename){
+		if($opt{ids_rename}){
 			my $id = $SEQ->id();
 			my $PICARD = '';
 			if($FASTQ){
 			    $PICARD = $SEQ->picard() || '';
 			}
-			eval '$id =~ '.$opt_ids_rename;
+			eval '$id =~ '.$opt{ids_rename};
 			$V->exit("Evaluation --ids-rename pattern failed. Make sure it is a valid perl substitution pattern\n".$@) if $@;
 			$SEQ->id($id);
 		}
@@ -718,8 +660,8 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		}
 
 		# mask low quality
-		if($opt_mask){
-                    if($opt_mask_advanced){
+		if($opt{mask}){
+                    if($opt{mask_advanced}){
                         phred_mask_advanced($SEQ);
                     }else{
                         $SEQ->mask_seq($SEQ->qual_lcs());
@@ -728,25 +670,25 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 
 		# OUTPUT
 		if($ofh){
-                    defined ($opt_desc_replace) && $SEQ->desc($opt_desc_replace);
-                    $opt_desc_append && $SEQ->desc_append($opt_desc_append);
+                    defined ($opt{desc_replace}) && $SEQ->desc($opt{desc_replace});
+                    $opt{desc_append} && $SEQ->desc_append($opt{desc_append});
 
                     # this it the fastest and most efficent way,
                     # however direct pointer access to seq might is
                     # vulnerable
-                    $opt_iupac_to_N && $SEQ->{seq} =~ tr/ATGCNatgcn/N/c;
+                    $opt{iupac_to_N} && $SEQ->{seq} =~ tr/ATGCNatgcn/N/c;
 
-                    $opt_lower_case && $SEQ->seq(lc($SEQ->seq));
-                    $opt_upper_case && $SEQ->seq(uc($SEQ->seq));
+                    $opt{lower_case} && $SEQ->seq(lc($SEQ->seq));
+                    $opt{upper_case} && $SEQ->seq(uc($SEQ->seq));
 
-                    if ($opt_fasta) { # convert fastq to fasta
-                        print $ofh $SEQ->string(fasta => 1, line_width => $opt_line_width);
-                    } elsif ($opt_fastq) { # convert fasta to fastq
-                        print $ofh $SEQ->string(fastq => $opt_fastq);
-                    } elsif ($opt_transform) { # convert phred
+                    if ($opt{fasta}) { # convert fastq to fasta
+                        print $ofh $SEQ->string(fasta => 1, line_width => $opt{line_width});
+                    } elsif ($opt{fastq}) { # convert fasta to fastq
+                        print $ofh $SEQ->string(fastq => $opt{fastq});
+                    } elsif ($opt{transform}) { # convert phred
                         print $ofh $SEQ->phred_transform()->string();
                     } else {
-                        print $ofh $SEQ->string($opt_line_width);
+                        print $ofh $SEQ->string($opt{line_width});
                     }
 		}
 
@@ -839,7 +781,98 @@ if($tsv){
 
 =head1 Methods
 
+=head2 init
+
+Read and process options
+
 =cut
+
+sub init{
+    no warnings 'qw';
+
+    my (%p) = @_;
+
+
+# $opt{'in=s'} = \(my $opt{in} = '-');
+# $opt{'tsv=s'} = \(my $opt{tsv} = '');
+# $opt{'ids=s'} = \(my $opt{ids} = '');
+# $opt{'ids-exclude'} = \(my $opt{ids_exclude} = 0);
+# $opt{'min-length=i'} = \(my $opt{min_length} = 0);
+# $opt{'line-width=i'} = \(my $opt{line_width} = 80);
+# $opt{'rev-comp=s'} = \(my $opt{rc} = '');
+# $opt{'N=s'} = \(my $opt{N} = '90,50');
+# $opt{'verbose=i'} = \(my $opt{verbose} = 2);
+
+    # GetOptions
+    my %def = (
+        argv => join(" ", @ARGV),
+        in => '-',
+        tsv => '',
+        ids => '',
+        ids_exclude => 0,
+        min_length => 0,
+        line_width => 80,
+        rc => '',
+        N => '90,50',
+        verbose => 2
+    );
+    my %opt; # = (config => []);
+
+    GetOptions(
+        \%opt, qw(
+                     in=s
+                     out:s
+                     tsv=s
+                     ids=s
+                     ids_exclude|ids-exclude
+                     ids_pattern|ids-pattern=s
+                     ids_split|ids-split
+                     ids_rename|ids-rename=s
+                     desc_replace|desc-replace:s
+                     desc_append|desc-append=s
+                     min_length|min-length=i
+                     max_length|max-length=i
+                     fasta
+                     fastq=s
+                     line_width|line-width=i
+                     rc|rev_comp|rev-comp=s
+                     check_format|check-format!
+                     lower_case|lower-case!
+                     upper_case|upper-case!
+                     iupac_to_N|iupac-to-N!
+                     phred_offset|phred-offset=i
+                     phred_transform|phred-transform
+                     phred_mask|phred-mask=s
+                     trim_window|trim-window=s
+                     trim_lcs|trim-lcs=s
+                     substr=s
+                     substr_perl_style|substr-perl-style!
+                     N=s
+                     base_content|base-content=s
+                     verbose=i
+                     quiet
+                     help|?
+                     version|V
+             )
+    ) or pod2usage(-verbose => 0, -exitval => 1);
+
+    if(@ARGV && !($ARGV[0] =~ /^-/)){
+        $opt{in} = $ARGV[0];
+	#push @{$opt{in}}, @ARGV;
+    }
+
+    $opt{help} && pod2usage;
+    $opt{version} && print "$VERSION\n" && exit(0);
+    $opt{verbose} = 0 if $opt{quiet};
+
+    %opt = (%def, %opt);
+
+    if($opt{max_length} && $opt{min_length} && ($opt{min_length} > $opt{max_length})){
+	pod2usage(exitval=>1, msg=>'min-length has to be smaller than max-length');
+    }
+
+    return %opt;
+}
 
 =head2 opt2handle
 
@@ -870,9 +903,9 @@ sub opt2handle{
 
 # DEPRECATED -> opt2handle
 #my %mf = (
-#	'--ids' => \$opt_ids,
-#	'--ids_pattern' => \$opt_ids_pattern,
-#	'--substr_file' => \$opt_substr_file
+#	'--ids' => \$opt{ids},
+#	'--ids_pattern' => \$opt{ids_pattern},
+#	'--substr_file' => \$opt{substr_file}
 #);
 #
 #foreach(qw(--ids --ids_pattern --substr_file)){
@@ -928,7 +961,7 @@ sub read_substrs{
 		next if /^#/; # ignore comments
 		my ($id, @f) = split(/\s/, $_, 4);
 		$id =~ s/^[>@]//;
-		unless($opt_substr_perl){
+		unless($opt{substr_perl_style}){
 			# transform from-to to offset-length
 			if(@f==1){
 				push @{$s{$id}{coords}}, [$f[0]];
@@ -1024,8 +1057,8 @@ sub phred_mask_advanced{
     # FROM, TO,
     # MASK_MIN:       $hcr_min_length
     # UNMASK_MIN:     $lcr_min_length
-    # MASK_REDUCE:    $opt_lcr_sticky_length
-    # MASK_END_RATIO: $opt_lcr_end_ratio
+    # MASK_REDUCE:    $opt{lcr_sticky_length}
+    # MASK_END_RATIO: $opt{lcr_end_ratio}
 
     # $hcrs[$i][0] == $hcrs[$i][OFFSET] := offset
     # $hcrs[$i][1] == $hcrs[$i][LENGTH] := length
@@ -1044,24 +1077,24 @@ sub phred_mask_advanced{
 
         #hcr sticky
         foreach (@hcrs) {
-            $_->[OFFSET]+=$opt_mask[MASK_REDUCE];
-            $_->[LENGTH]-=($opt_mask[MASK_REDUCE] * 2);
+            $_->[OFFSET]+=$opt{mask}[MASK_REDUCE];
+            $_->[LENGTH]-=($opt{mask}[MASK_REDUCE] * 2);
         }
 
         #head
         # mask/unmask start
         my $seq_length = length($fq->seq);
-        my $lcr_start_short = $opt_mask[UNMASK_MIN] - $hcrs[0][OFFSET];
+        my $lcr_start_short = $opt{mask}[UNMASK_MIN] - $hcrs[0][OFFSET];
         # Consider starts shorter then lcr_min_length
         if ($lcr_start_short > 0) {
 				# unmask start if its long enough to be worth it: short < 50% lcr_min_length
-            if ( $lcr_start_short < $opt_mask[MASK_END_RATIO] * $opt_mask[UNMASK_MIN] ) {
+            if ( $lcr_start_short < $opt{mask}[MASK_END_RATIO] * $opt{mask}[UNMASK_MIN] ) {
                 #$v->hline;
                 #$v->verbose('first hcr to close to start '.$lcr_start_short);
                 # if OFFSET is adjusted, LENGTH always needs to be adjusted
                 #  as well or the HCR is just shifted
                 # adjust length, check for hcr_min_length
-                if ( ($hcrs[0][LENGTH] -= $lcr_start_short) < $opt_mask[MASK_MIN]) {
+                if ( ($hcrs[0][LENGTH] -= $lcr_start_short) < $opt{mask}[MASK_MIN]) {
                     #$v->verbose('first hcr to short: '.$hcrs[0][LENGTH]);
                     shift @hcrs; # remove first hcr if it becomes to short after trimming
                 } else {
@@ -1076,18 +1109,18 @@ sub phred_mask_advanced{
 
         # mask/unmask end
         if ( scalar @hcrs ) { # check if there are HCRs, might be trimmed by first
-            my $lcr_end_short = $opt_mask[UNMASK_MIN] - ($seq_length - ($hcrs[$#hcrs][OFFSET] + $hcrs[$#hcrs][LENGTH]));
+            my $lcr_end_short = $opt{mask}[UNMASK_MIN] - ($seq_length - ($hcrs[$#hcrs][OFFSET] + $hcrs[$#hcrs][LENGTH]));
 				# check if it is to close to the end
             if ($lcr_end_short  > 0) {
-                if ($lcr_end_short < $opt_mask[MASK_END_RATIO] * $opt_mask[UNMASK_MIN] ) {
+                if ($lcr_end_short < $opt{mask}[MASK_END_RATIO] * $opt{mask}[UNMASK_MIN] ) {
                     #$v->verbose('last hcr to close to end '.$lcr_end_short);
                     # shorten last hcr and check its length
-                    if ( ($hcrs[$#hcrs][LENGTH] -= $lcr_end_short) < $opt_mask[MASK_MIN]) {
+                    if ( ($hcrs[$#hcrs][LENGTH] -= $lcr_end_short) < $opt{mask}[MASK_MIN]) {
                         #$v->verbose('last hcr to short');
                         pop @hcrs; # remove last hcr if it becomes to short after trimming
                     }
                 } else {        # extend hcr to end of seq
-                    $hcrs[$#hcrs][LENGTH] += $opt_mask[UNMASK_MIN] - $lcr_end_short
+                    $hcrs[$#hcrs][LENGTH] += $opt{mask}[UNMASK_MIN] - $lcr_end_short
                 }
             }
         }
@@ -1110,11 +1143,11 @@ sub phred_mask_advanced{
                 my ($ha, $hb) = ($hcrs{$i}, $hcrs{$i+1});
                 my $hae = $ha->[OFFSET]+$ha->[LENGTH];
                 my $hbs = $hb->[OFFSET];
-                if ((my $lcr_short = $opt_mask[UNMASK_MIN] - ($hbs - $hae)) > 0) {
+                if ((my $lcr_short = $opt{mask}[UNMASK_MIN] - ($hbs - $hae)) > 0) {
                     my $lcr_short_a = int($lcr_short/2);
                     my $lcr_short_b = $lcr_short_a + $lcr_short%2;
                     $ha->[LENGTH] -= $lcr_short_a;
-                    if ( $ha->[LENGTH] < $opt_mask[MASK_MIN] ) { # $ha is completely processed
+                    if ( $ha->[LENGTH] < $opt{mask}[MASK_MIN] ) { # $ha is completely processed
                         push @hcrs_short_idx, $i
                     }
                     $hb->[OFFSET] += $lcr_short_b;
@@ -1122,7 +1155,7 @@ sub phred_mask_advanced{
                 }
             }
 				# and dont forget the last hcr length
-            if ( $hcrs{$i}[LENGTH] < $opt_mask[MASK_MIN] ) { # $ha is completely processed
+            if ( $hcrs{$i}[LENGTH] < $opt{mask}[MASK_MIN] ) { # $ha is completely processed
                 push @hcrs_short_idx, $i
             }
 
