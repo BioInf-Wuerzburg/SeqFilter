@@ -771,10 +771,12 @@ sub init_input{
     # check all formats
     my $FASTQ;
     my $f;
-    foreach ( @{$opt{ifhs}}) {
-        my $c =$_->getc();                           # read first char
+    for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
+        my $fh = $opt{ifhs}[$i];
+        $V->verbose("Waiting for STDIN ..") if $opt{_in}[$i] eq '-';
+        my $c =$fh->getc();                           # read first char
         $V->exit("No data at $opt{in}\n") unless $c; # empty file
-        $_->ungetc(ord($c));                         # unread first char
+        $fh->ungetc(ord($c));                         # unread first char
         $f.=$c;
     }
 
