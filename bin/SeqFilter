@@ -35,7 +35,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '1.8.1';
+our $VERSION = '1.8.2';
 
 =head1 NAME
 
@@ -302,20 +302,13 @@ Display current version
 
 ##------------------------------------------------------------------------##
 
-=head1 MAIN
+=head1 CODE
 
 =cut
 
 my %opt = init();
-
-my $V = Verbose->new(
-	level => 1,
-	report_level => $opt{verbose},
-	line_width => 80,
-);
-
-$V->verbose("$0-$VERSION");
-
+my $V = $opt{_V};
+my $ofh = $opt{ofh};
 
 ##------------------------------------------------------------------------##
 
@@ -385,15 +378,6 @@ my $VPB = Verbose::ProgressBar->new(
 );
 
 
-# output file
-my $ofh;
-if($opt{out}){
-    if($opt{out} eq '-'){
-        $ofh = \*STDOUT;
-    }else{
-        open($ofh, ">", $opt{out}) || $V->exit("Can't open output read file: '$opt{out}'");
-    }
-}
 
 
 ##------------------------------------------------------------------------##
@@ -481,60 +465,6 @@ if($opt{rc}){
 chomp(@IDS_PATTERS);
 my %SUBSTR = read_substrs($opt{substr_fh}) if $opt{substr_file};
 
-##------------------------------------------------------------------------##
-
-=head2 prepare som filter
-
-=cut
-
-my @opt_base_content = split(/\s*,\s*/, $opt{base_content}) if $opt{base_content};
-my @opt_N = sort{$a <=> $b}(split(/\s*,\s*/, $opt{N})) if $opt{N};
-
-my $tsv;
-if($opt{tsv}){
-	if($opt{tsv} eq '-' && (!defined($opt{out}) || $opt{out} ne '-')){
-		$tsv = \*STDOUT;
-	}else{
-		open($tsv, ">", $opt{tsv}) || $V->exit("Can't open tsv stats file: '$opt{tsv}'");
-	}
-}
-
-my @opt_mask;
-if($opt{mask}){
-
-    @opt_mask = split(',', $opt{mask});
-    unless (@opt_mask > 1){
-        $V->exit("--phred-mask requires at least to values");
-    }
-
-    $opt{mask_advanced} = 1 if @opt_mask > 2;
-    push @opt_mask, 0 while @opt_mask < 6; # make 0 default
-    Fastq::Seq->Qual_lcs_range($opt{mask}[FROM], $opt{mask}[TO], $opt{phred_offset});
-    $opt{mask_min} =  int(($opt{mask}[MASK_MIN] ? $opt{mask}[MASK_MIN] + (2* $opt{mask}[MASK_REDUCE]) : 1) +.5);
-
-    Fastq::Seq->Qual_lcs_min_length($opt{mask_min});
-}
-
-if($opt{trim_lcs}){
-	my($from, $to, $length) = split('\s*,\s*', $opt{trim_lcs});
-	Fastq::Seq->Qual_lcs_range($from, $to, $opt{phred_offset});
-	Fastq::Seq->Qual_lcs_min_length($length);
-}
-
-if($opt{trim_window}){
-	my ($soft_min, $hard_min, $wsize) = (split(',', $opt{trim_window}), 0, 10);
-	Fastq::Seq->Qual_window_min_score_soft($soft_min);
-	Fastq::Seq->Qual_window_min_score_hard($hard_min);
-	Fastq::Seq->Qual_window_size($wsize);
-}
-
-if($opt{check_format}){
-	Fastq::Seq->CheckFormat(1);
-}
-
-if($opt{fastq} && length $opt{fastq} != 1){
-    $V->exit("--fastq needs to be a single character!");
-}
 
 # TOTAL
 my @total_L;
@@ -701,8 +631,8 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 		$filtered_longest = $length if $length > $filtered_longest;
 		$filtered_shortest = $length if (!defined ($filtered_shortest) || $length < $filtered_shortest);
 		# base content
-		if(@opt_base_content){
-			foreach (@opt_base_content){
+		if($opt{base_content}){
+			foreach (@{$opt{_base_content}}){
 				$BCs{$_} += $SEQ->base_content($_);
 			}
 		}
@@ -718,9 +648,10 @@ $VPB->finish($file_size);
 =cut
 
 #Nx computation
-if(@opt_N){
-	%filtered_Ns = Nx(total_length => $filtered_length, lengths => [@filtered_L], Nxs => [@opt_N]);
-	%total_Ns = Nx(total_length => $total_length, lengths => [@total_L], Nxs => [@opt_N]);
+if($opt{N}){
+    print Dumper(\%opt); use Data::Dumper;
+	%filtered_Ns = Nx(total_length => $filtered_length, lengths => [@filtered_L], Nxs => [@{$opt{_N}}]);
+	%total_Ns = Nx(total_length => $total_length, lengths => [@total_L], Nxs => [@{$opt{_N}}]);
 }
 
 $V->hline();
@@ -772,8 +703,8 @@ $V->nline();
 
 
 
-if($tsv){
-	print $tsv join("\t", scalar @filtered_L, $filtered_length, $filtered_longest, $filtered_shortest, @filtered_Ns, @BCs),"\n";
+if($opt{tfh}){
+    print {$opt{tfh}} join("\t", scalar @filtered_L, $filtered_length, $filtered_longest, $filtered_shortest, @filtered_Ns, @BCs),"\n";
 }
 
 
@@ -856,6 +787,13 @@ sub init{
 
     %opt = (%def, %opt);
 
+    $opt{_V} = Verbose->new(
+	level => 1,
+	report_level => $opt{verbose},
+	line_width => 80,
+    );
+    $opt{_V}->verbose("$0-$VERSION");
+
     if($opt{max_length} && $opt{min_length} && ($opt{min_length} > $opt{max_length})){
 	pod2usage(exitval=>1, msg=>'min-length has to be smaller than max-length');
     }
@@ -865,8 +803,66 @@ sub init{
         $opt{out} = '-';
     }
 
+    # output file
+    if($opt{out}){
+        if($opt{out} eq '-'){
+            $opt{ofh} = \*STDOUT;
+        }else{
+            open($opt{ofh}, ">", $opt{out}) || $V->exit("Can't open output read file: '$opt{out}'");
+        }
+    }
+
+
+    $opt{_base_content} = [split(/\s*,\s*/, $opt{base_content})] if $opt{base_content};
+    $opt{_N} = [sort{$a <=> $b}(split(/\s*,\s*/, $opt{N}))] if $opt{N};
+
+    if ($opt{tsv}) {
+	if ($opt{tsv} eq '-' && (!defined($opt{out}) || $opt{out} ne '-')) {
+            $opt{tfh} = \*STDOUT;
+	} else {
+            open($opt{tfh}, ">", $opt{tsv}) || $V->exit("Can't open tsv stats file: '$opt{tsv}'");
+	}
+    }
+
+    if ($opt{mask}) {
+
+        $opt{_mask} = split(',', $opt{mask});
+        unless (@{$opt{_mask}} > 1) {
+            $V->exit("--phred-mask requires at least to values");
+        }
+
+        $opt{mask_advanced} = 1 if @{$opt{_mask}} > 2;
+        push @{$opt{_mask}}, 0 while @{$opt{_mask}} < 6; # make 0 default
+        Fastq::Seq->Qual_lcs_range($opt{mask}[FROM], $opt{mask}[TO], $opt{phred_offset});
+        $opt{mask_min} =  int(($opt{mask}[MASK_MIN] ? $opt{mask}[MASK_MIN] + (2* $opt{mask}[MASK_REDUCE]) : 1) +.5);
+
+        Fastq::Seq->Qual_lcs_min_length($opt{mask_min});
+    }
+
+    if ($opt{trim_lcs}) {
+        my($from, $to, $length) = split('\s*,\s*', $opt{trim_lcs});
+        Fastq::Seq->Qual_lcs_range($from, $to, $opt{phred_offset});
+        Fastq::Seq->Qual_lcs_min_length($length);
+    }
+
+    if ($opt{trim_window}) {
+        my ($soft_min, $hard_min, $wsize) = (split(',', $opt{trim_window}), 0, 10);
+        Fastq::Seq->Qual_window_min_score_soft($soft_min);
+        Fastq::Seq->Qual_window_min_score_hard($hard_min);
+        Fastq::Seq->Qual_window_size($wsize);
+    }
+
+    if ($opt{check_format}) {
+        Fastq::Seq->CheckFormat(1);
+    }
+
+    if ($opt{fastq} && length $opt{fastq} != 1) {
+        $V->exit("--fastq needs to be a single character!");
+    }
+
     return %opt;
 }
+
 
 =head2 opt2handle
 
@@ -979,7 +975,7 @@ sub Nx{
 	my $p = {
 		total_length => undef,
 		lengths => undef,
-		Nxs => [@opt_N],
+		Nxs => [@{$opt{_N}}],
 		@_
 	};
 
