@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '1.7.0';
+our $VERSION = '1.7.1';
 
 =head1 NAME
 
@@ -511,7 +511,6 @@ $FH->ungetc(ord($c)); # unread first char
 
 if ( $c eq '@' ){
     $FASTQ = 1;
-    $V->verbose('Detected FASTQ format, phred-offset '.$opt_offset);
     $FP = Fastq::Parser->new( fh => $FH );
 
     if($opt_offset){
@@ -522,11 +521,12 @@ if ( $c eq '@' ){
     pod2usage(msg=>'Could not guess phred offset, please specify manually', exitval => 2)
         unless $opt_offset;
 
+    $V->verbose('Detected FASTQ format, phred-offset '.$opt_offset);
+
 } elsif ( $c eq '>' ){
     $FASTQ = 0;
-    $V->verbose('Detected FASTA format');
     $FP = Fasta::Parser->new( fh => $FH );
-
+    $V->verbose('Detected FASTA format');
 }else {
     $V->exit(( $opt_in ? $opt_in : "STDIN" )." neither FASTA nor FASTQ");
 }
