@@ -57,10 +57,6 @@ Thomas Hackl - S<thackl@lim4.de>
 
 =over
 
-=item [--in=<FASTA/FASTQ>]
-
-Input FASTA/FASTQ file. Default STDIN.
-
 =item [--out=<FILE/->] -c/--stdout
 
 Output to file. Default off. Specify -o - or shorter -c for STDOUT.
@@ -310,78 +306,13 @@ my %opt = init();
 my $V = $opt{_V};
 my $ofh = $opt{ofh};
 
-##------------------------------------------------------------------------##
-
-=head2 check input file
-
-=cut
-
-# check STDIN, check files
-# $opt{in}, $opt{ids}, $opt{ids_pattern}, $opt{substr_file}
-# only one can be '-'
-
-my $FH;
-my $FP;
-my $FASTQ;
-
-if($opt{in} ne '-'){
-    open ($FH, '<', $opt{in}) or $V->exit("$!: $opt{in}");
-
-    if(-f $FH && -s _ == 0){
-        $V->verbose("Empty input file: $opt{in}");
-        exit(0);
-    }
-}else{
-    $opt{stdin}='--in';
-    $FH = \*STDIN;
-}
-
-# Fasta parser
-$V->verbose("--in: ".( $opt{in} ne '-' ? $opt{in} : "STDIN" ));
-
-# Fasta or Fastq
-# Can't use check_format of Fasta/q Parser, because I cannot open a pipe twice
-my $c =$FH->getc(); # read first char
-$V->exit("No data at $opt{in}\n") unless $c; # empty file
-$FH->ungetc(ord($c)); # unread first char
-
-if ( $c eq '@' ){
-    $FASTQ = 1;
-    $FP = Fastq::Parser->new( fh => $FH );
-
-    if($opt{phred_offset}){
-        $FP->phred_offset($opt{phred_offset});
-    }else{
-        $opt{phred_offset} = $FP->guess_phred_offset;
-        $FP->phred_offset(33); # use 33 as undef breaks parser
-    };
-
-    $V->verbose('Detected FASTQ format, phred-offset '.($opt{phred_offset} || "NA"));
-
-} elsif ( $c eq '>' ){
-    $FASTQ = 0;
-    $FP = Fasta::Parser->new( fh => $FH );
-    $V->verbose('Detected FASTA format');
-}else {
-    $V->exit(( $opt{in} ? $opt{in} : "STDIN" )." neither FASTA nor FASTQ");
-}
-
-
-# a fix to handle gzipped files, -s doesnt work on gzip
-my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh;
-
-my $VPB = Verbose::ProgressBar->new(
-	level => 2,
-	report_level => $opt{verbose},
-	size => $file_size, # size and _fh required for gzip fix
-	_fh => $FP->fh(),
-);
-
+# peek at input files/pipes
+my $FASTQ = init_input();
 
 # fasta/fastq specific
 init_specific();
 
-# ids, substr, ..
+# read lists of ids, substr, ..
 my %IDS;
 my %IDS_SPLIT;
 my $IDS_SPLIT_OPEN = 0;
@@ -415,6 +346,24 @@ my %BCs; # base contents
 
 
 ##------------------------------------------------------------------------##
+
+# foreach file
+
+$V->verbose("--in: ".( $opt{in} ne '-' ? $opt{in} : "STDIN" ));
+
+my $FP = ${$opt{fps}}[0];
+
+# a fix to handle gzipped files, -s doesnt work on gzip
+my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh;
+
+my $VPB = Verbose::ProgressBar->new(
+	level => 2,
+	report_level => $opt{verbose},
+	size => $file_size, # size and _fh required for gzip fix
+	_fh => $FP->fh(),
+);
+
+
 
 =head2 loop through file and apply filter
 
@@ -578,7 +527,6 @@ $VPB->finish($file_size);
 
 #Nx computation
 if($opt{N}){
-    print Dumper(\%opt); use Data::Dumper;
 	%filtered_Ns = Nx(total_length => $filtered_length, lengths => [@filtered_L], Nxs => [@{$opt{_N}}]);
 	%total_Ns = Nx(total_length => $total_length, lengths => [@total_L], Nxs => [@{$opt{_N}}]);
 }
@@ -654,7 +602,6 @@ sub init{
     # GetOptions
     my %def = (
         argv => join(" ", @ARGV),
-        in => '-',
         tsv => '',
         ids => '',
         ids_exclude => 0,
@@ -664,11 +611,10 @@ sub init{
         N => '90,50',
         verbose => 2
     );
-    my %opt; # = (config => []);
+    my %opt = (in => []);
 
     GetOptions(
         \%opt, qw(
-                     in=s
                      out=s
                      stdout|c
                      tsv=s
@@ -705,11 +651,6 @@ sub init{
              )
     ) or pod2usage(-verbose => 0, -exitval => 1);
 
-    if(@ARGV && !($ARGV[0] =~ /^-/)){
-        $opt{in} = $ARGV[0];
-	#push @{$opt{in}}, @ARGV;
-    }
-
     $opt{help} && pod2usage(1);
     if ($opt{version}){ print "$VERSION\n"; exit(0) };
     $opt{verbose} = 0 if $opt{quiet};
@@ -722,6 +663,12 @@ sub init{
 	line_width => 80,
     );
     $V->verbose("$0-$VERSION");
+
+    $opt{in} = @ARGV ? [@ARGV] : ['-'];
+    if (my $stdinc = grep {$_ eq '-'}@{$opt{in}}) {
+        $V->exit("Can't reads twice from stdin") if $stdinc > 1;
+        $opt{stdin} = '--in' if $stdinc;
+    }
 
     if($opt{max_length} && $opt{min_length} && ($opt{min_length} > $opt{max_length})){
 	pod2usage(exitval=>1, msg=>'min-length has to be smaller than max-length');
@@ -793,7 +740,69 @@ sub init{
 }
 
 
-##------------------------------------------------------------------------##
+=head2 init_input
+
+=cut
+
+sub init_input{
+
+    # open all handles
+    $opt{_in} = [];
+    $opt{ifhs} = [];
+    foreach ( @{$opt{in}} ) {
+        my $fh;
+        if ($_ ne '-') {
+            open ($fh, '<', $_) or $V->exit("$!: $_");
+
+            if (-f $fh && -s _ == 0) {
+                $V->verbose("Skipping empty input file: $_");
+                next;
+            }
+        } else {
+            $fh = \*STDIN;
+        }
+        push @{$opt{_in}}, $_;
+        push @{$opt{ifhs}}, $fh;
+    }
+
+    # check all formats
+    my $FASTQ;
+    my $f;
+    foreach ( @{$opt{ifhs}}) {
+        my $c =$_->getc();                          # read first char
+        $V->exit("No data at $opt{in}\n") unless $c; # empty file
+        $_->ungetc(ord($c));                        # unread first char
+        $f.=$c;
+    }
+
+    if ( $f =~ tr/@>//c ) {
+        die "$f, file w/ unknown format\n";
+    }
+    $FASTQ = $f =~ tr/@//;
+    if ( $FASTQ && $f =~ tr/>//) {
+        die "$f, files w/ mixed formats\n";
+    }
+
+    if ( $FASTQ ) {
+        $opt{fps} = [map{ Fastq::Parser->new( fh => $_ ) }@{$opt{ifhs}}];
+        foreach (@{$opt{fps}}) {
+            if ($opt{phred_offset}) {
+                $_->phred_offset($opt{phred_offset});
+            } else {
+                $opt{phred_offset} = $_->guess_phred_offset;
+                $_->phred_offset(33); # use 33 as undef breaks parser
+            }
+        }
+
+        $V->verbose('Detected FASTQ format, phred-offset '.($opt{phred_offset} || "NA"));
+    } else {
+        $opt{fps} = [map{ Fasta::Parser->new( fh => $_ ) }@{$opt{ifhs}}];
+        $V->verbose('Detected FASTA format');
+    }
+
+    return $FASTQ;
+}
+
 
 =head2 init_specific
 
