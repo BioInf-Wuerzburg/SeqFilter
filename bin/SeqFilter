@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '1.7.1';
+our $VERSION = '1.7.2';
 
 =head1 NAME
 
@@ -213,13 +213,13 @@ FASTA only. Generate FASTQ using <CHAR> as quality.
 
 $opt{'fastq=s'} = \(my $opt_fastq = undef);
 
-=item [--line-width] [0]
+=item [--line-width] [80]
 
-Line width for FASTA sequences. Set 0 for single line.
+Line width for FASTA sequences. Set 0 for single line. Ignored for FASTQ.
 
 =cut
 
-$opt{'line-width=i'} = \(my $opt_line_width = undef);
+$opt{'line-width=i'} = \(my $opt_line_width = 80);
 
 =item [--rev-comp=<FILE/-/LIST/*>]
 
@@ -575,17 +575,12 @@ if(!$FASTQ){
 }
 
 my %opt_fa_only = (
-	'line-width' => $opt_line_width,
         'fastq' => $opt_fastq,
 );
 
 if($FASTQ){
     while (my ($k,$v) = each %opt_fa_only){
-        if($k eq 'line-width'){ # special case, allowed in comb. with --fasta
-            defined $v && ! $opt_fasta && $V->exit("$k can only be used on FASTA data");
-        }else{
-            defined $v && $V->exit("$k can only be used on FASTA data");
-        }
+        defined $v && $V->exit("$k can only be used on FASTA data");
     }
 }
 
