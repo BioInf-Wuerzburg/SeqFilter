@@ -527,10 +527,10 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
     if ($i == 0 ) {
         no warnings 'qw';
-        print join("\t", qw(#source state reads total max min), (map{"N$_"}@{$opt{_N}}), (map{"%$_"}@{$opt{_base_content}})),"\n";
+        print {$opt{sfh}} join("\t", qw(#source state reads total max min), (map{"N$_"}@{$opt{_N}}), (map{"%$_"}@{$opt{_base_content}})),"\n";
     }
-    print join("\t", $opt{in}[$i], "RAW", summary($STAT_raw[$i], $BC_raw[$i])),"\n";
-    print join("\t", $opt{in}[$i], "FIL", summary($STAT_fil[$i], $BC_fil[$i])),"\n" if $FILTERING;
+    print {$opt{sfh}} join("\t", $opt{in}[$i], "RAW", summary($STAT_raw[$i], $BC_raw[$i])),"\n";
+    print {$opt{sfh}} join("\t", $opt{in}[$i], "FIL", summary($STAT_fil[$i], $BC_fil[$i])),"\n" if $FILTERING;
 
 }
 
@@ -574,6 +574,7 @@ sub summary{
 
 }
 
+## legacy stats
 
 # #Nx computation
 # if($opt{N}){
@@ -601,8 +602,6 @@ sub summary{
 # 	exit(0);
 # }
 
-
-
 # $V->verbose("Filtered");
 # $V->verbose(sprintf("%-15s %10d #","Sequences", scalar @filtered_L));
 # $V->verbose(sprintf("%-15s %10d bp", "Total", $filtered_length));
@@ -624,11 +623,8 @@ sub summary{
 # 	}
 # }
 
-
 # $V->hline();
 # $V->nline();
-
-
 
 # if($opt{tfh}){
 #     print {$opt{tfh}} join("\t", scalar @filtered_L, $filtered_length, $filtered_longest, $filtered_shortest, @filtered_Ns, @BCs),"\n";
@@ -652,7 +648,7 @@ sub init{
     # GetOptions
     my %def = (
         argv => join(" ", @ARGV),
-        tsv => '',
+        stats => '-',
         ids => '',
         ids_exclude => 0,
         min_length => 0,
@@ -667,7 +663,7 @@ sub init{
         \%opt, qw(
                      out=s
                      stdout|c
-                     tsv=s
+                     stats=s
                      ids=s
                      ids_exclude|ids-exclude
                      ids_pattern|ids-pattern=s
@@ -733,6 +729,7 @@ sub init{
     if($opt{out}){
         if($opt{out} eq '-'){
             $opt{ofh} = \*STDOUT;
+            $opt{stdout} = 1;
         }else{
             open($opt{ofh}, ">", $opt{out}) || $V->exit("Can't open output read file: '$opt{out}'");
         }
@@ -742,12 +739,12 @@ sub init{
     $opt{_base_content} = [split(/\s*,\s*/, $opt{base_content})] if $opt{base_content};
     $opt{_N} = [sort{$a <=> $b}(split(/\s*,\s*/, $opt{N}))] if $opt{N};
 
-    if ($opt{tsv}) {
-	if ($opt{tsv} eq '-' && (!defined($opt{out}) || $opt{out} ne '-')) {
-            $opt{tfh} = \*STDOUT;
-	} else {
-            open($opt{tfh}, ">", $opt{tsv}) || $V->exit("Can't open tsv stats file: '$opt{tsv}'");
-	}
+    # stat file handle
+    if ($opt{stats} eq '-'){
+        $opt{sfh} = $opt{stdout} ? \*STDERR : \*STDOUT;
+        $V->verbose("Redirecting stats to STDERR, STDOUT already in use");
+    } else {
+        open($opt{sfh}, ">", $opt{stats}) || $V->exit("Can't open stats file: '$opt{stats}'");
     }
 
     if ($opt{phred_mask}) {
