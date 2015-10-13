@@ -258,7 +258,7 @@ By default, substr information are read according to the format FROM TO.
 Set this flag to switch the behaviour to perl substr() like style of
 "OFFSET [LENGTH [REPLACEMENT]]"
 
-=item [--N=<INT,INT...>]
+=item [--Nx=<INT,INT...>]
 
 Report Nx value (N50, N90...). Specify multiple values as comma separated
  STRING. Takes filter settings into account. Result might be ommited if to
@@ -325,25 +325,30 @@ my @IDS_PATTERS;
 my %SUBSTR;
 init_lists();
 
+# stats
+# need hash of length with counts, all other length metrics can be computed
+# from that hash
+# need base contents hash
+my $COUNT = 0; # this is mostly for ids-replace $COUNT
+my @STAT_raw; # stats raw
+my @STAT_fil; # stats filtered
+my @BC_raw; # base contents
+my @BC_fil; # base contents
 
-# TOTAL
-my @total_L;
-my $total_count;	# total count
-my $total_length = 0;
-my $total_longest = 0;
-my $total_shortest = undef;
-my %total_Ns;
-
-# FILTERED
-my @filtered_L; # lengths of seqs
-my $COUNT = 0;
-my $filtered_length = 0;
-my $filtered_longest = 0;
-my $filtered_shortest = undef;
-my %filtered_Ns; #Nx values
-my %BCs; # base contents
-
-
+my @filters = qw(
+                    ids
+                    ids_exclude
+                    ids_pattern
+                    min_length
+                    max_length
+                    iupac_to_N
+                    phred_mask
+                    trim_window
+                    trim_lcs
+                    substr
+                    substr_perl_style
+            );
+my $FILTERING = grep{$_}@opt{@filters};
 
 ##------------------------------------------------------------------------##
 
@@ -367,19 +372,21 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
     #loop through file and apply filter
  LOOP: while (my $SEQ = $FP->next_seq()){
-	$total_count++;
 	$VPB->update();
 
 	my $ID = $SEQ->id;
 	my $length = length($SEQ->seq);
 
-	# TOTAL STATS
-	# store length for Nx computation
-	push @total_L, $length;
-	# length stuff
-	$total_length+=$length;
-	$total_longest = $length if $length > $total_longest;
-	$total_shortest = $length if (!defined ($total_shortest) || $length < $total_shortest);
+        # raw stats
+        $STAT_raw[$i]{$length}++;
+        my @bcs;
+        if ($opt{base_content}) {
+            foreach (@{$opt{_base_content}}) {
+                my $bc = $SEQ->base_content($_);
+                push @bcs, $bc;
+                $BC_raw[$i]{$_}+= $bc;
+            }
+        }
 
 
 	# FILTER
@@ -504,17 +511,12 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
                 }
             }
 
-            # OUTPUT STATS
-            # store length for Nx computation
-            push @filtered_L, $length;
-            # length stuff
-            $filtered_length+=$length;
-            $filtered_longest = $length if $length > $filtered_longest;
-            $filtered_shortest = $length if (!defined ($filtered_shortest) || $length < $filtered_shortest);
-            # base content
-            if ($opt{base_content}) {
-                foreach (@{$opt{_base_content}}) {
-                    $BCs{$_} += $SEQ->base_content($_);
+            if ($FILTERING) { # capture fil stats if actually filtering
+                $STAT_fil[$i]{$length}++;
+                if ($opt{base_content}) {
+                    for (my $k=0; $k<@{$opt{_base_content}}; $k++) {
+                        $BC_fil[$i]{$opt{_base_content}[$k]}+= $bcs[$k];
+                    }
                 }
             }
 	}
@@ -522,70 +524,115 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
     #TODO: adjust to file_s
     $VPB->finish($file_size);
+
+    if ($i == 0 ) {
+        no warnings 'qw';
+        print join("\t", qw(#source state reads total max min), (map{"N$_"}@{$opt{_N}}), (map{"%$_"}@{$opt{_base_content}})),"\n";
+    }
+    print join("\t", $opt{in}[$i], "RAW", summary($STAT_raw[$i], $BC_raw[$i])),"\n";
+    print join("\t", $opt{in}[$i], "FIL", summary($STAT_fil[$i], $BC_fil[$i])),"\n" if $FILTERING;
+
 }
 
-=head2 print summary
+=head2 print_summary
 
 =cut
 
-#Nx computation
-if($opt{N}){
-	%filtered_Ns = Nx(total_length => $filtered_length, lengths => [@filtered_L], Nxs => [@{$opt{_N}}]);
-	%total_Ns = Nx(total_length => $total_length, lengths => [@total_L], Nxs => [@{$opt{_N}}]);
-}
+sub summary{
+    my ($ls, $bc) = @_;
 
-$V->hline();
-$V->verbose('Input');
-$V->verbose(sprintf("%-15s %10d #","Sequences", $total_count));
-$V->verbose(sprintf("%-15s %10d bp", "Total", $total_length));
-$V->verbose(sprintf("%-15s %10d bp", "Longest", $total_longest));
-$V->verbose(sprintf("%-15s %10d bp", "Shortest",$total_shortest));
+    # Nx: get lengths sorted
+    my @ls = sort{$a<=>$b}keys %$ls;
+    my $sc = 0;
+    $sc+= $_ for values %$ls;
+    my @bps = map{ $ls->{$_} * $_ }@ls;
+    my $bps = 0;
+    $bps+= $_ for @bps;
 
-my @total_Ns;
-foreach (sort{$a <=> $b}keys %total_Ns){
-	$V->verbose(sprintf("%-15s %10d bp", "N$_", $total_Ns{$_}));
-	push @total_Ns, $total_Ns{$_};
-}
+    my @nbp = map{$bps/100*(100-$_)}@{$opt{_N}};
+    my @ni;
+    #print Dumper(\@bps, \@nbp); use Data::Dumper;
+    foreach my $nbp (@nbp) {
+        my $bps_cum = 0;
+        for (my $i=0; $i<@bps; $i++) {
+            $bps_cum+= $bps[$i];
+            if ($bps_cum > $nbp){
+                push @ni, $i;
+                last;
+            }
+        }
+    }
 
-$V->hline();
+    my @bc;
+    @bc = map{sprintf("%0.2f", $bc->{$_}/$bps*100)} sort keys %$bc if $bc;
 
-unless(@filtered_L){
-	$V->verbose("No sequences found matching given filter criteria");
-	exit(0);
-}
+    if ($sc) {
+        return $sc, $bps,  $ls[-1], $ls[0], @ls[@ni], @bc;
+    }else {
+        return $sc, $bps, ("NA") x (2 + @nbp + @{$opt{_base_content}});
+    }
 
-
-
-$V->verbose("Filtered");
-$V->verbose(sprintf("%-15s %10d #","Sequences", scalar @filtered_L));
-$V->verbose(sprintf("%-15s %10d bp", "Total", $filtered_length));
-$V->verbose(sprintf("%-15s %10d bp", "Longest", $filtered_longest));
-$V->verbose(sprintf("%-15s %10d bp", "Shortest", $filtered_shortest));
-
-my @filtered_Ns;
-foreach (sort{$a <=> $b}keys %filtered_Ns){
-	$V->verbose(sprintf("%-15s %10d bp", "N$_", $filtered_Ns{$_}));
-	push @filtered_Ns, $filtered_Ns{$_};
-}
-
-# base content
-my @BCs;
-if(keys %BCs){
-	foreach my $k(sort keys %BCs){
-		$V->verbose(sprintf("%-15s %10d bp %10.2f %%", "[$k]", $BCs{$k}, (100*$BCs{$k}/$filtered_length)));
-		push @BCs, $BCs{$k};
-	}
 }
 
 
-$V->hline();
-$V->nline();
+# #Nx computation
+# if($opt{N}){
+# 	%filtered_Ns = Nx(total_length => $filtered_length, lengths => [@filtered_L], Nxs => [@{$opt{_N}}]);
+# 	%total_Ns = Nx(total_length => $total_length, lengths => [@total_L], Nxs => [@{$opt{_N}}]);
+# }
+
+# $V->hline();
+# $V->verbose('Input');
+# $V->verbose(sprintf("%-15s %10d #","Sequences", $total_count));
+# $V->verbose(sprintf("%-15s %10d bp", "Total", $total_length));
+# $V->verbose(sprintf("%-15s %10d bp", "Longest", $total_longest));
+# $V->verbose(sprintf("%-15s %10d bp", "Shortest",$total_shortest));
+
+# my @total_Ns;
+# foreach (sort{$a <=> $b}keys %total_Ns){
+# 	$V->verbose(sprintf("%-15s %10d bp", "N$_", $total_Ns{$_}));
+# 	push @total_Ns, $total_Ns{$_};
+# }
+
+# $V->hline();
+
+# unless(@filtered_L){
+# 	$V->verbose("No sequences found matching given filter criteria");
+# 	exit(0);
+# }
 
 
 
-if($opt{tfh}){
-    print {$opt{tfh}} join("\t", scalar @filtered_L, $filtered_length, $filtered_longest, $filtered_shortest, @filtered_Ns, @BCs),"\n";
-}
+# $V->verbose("Filtered");
+# $V->verbose(sprintf("%-15s %10d #","Sequences", scalar @filtered_L));
+# $V->verbose(sprintf("%-15s %10d bp", "Total", $filtered_length));
+# $V->verbose(sprintf("%-15s %10d bp", "Longest", $filtered_longest));
+# $V->verbose(sprintf("%-15s %10d bp", "Shortest", $filtered_shortest));
+
+# my @filtered_Ns;
+# foreach (sort{$a <=> $b}keys %filtered_Ns){
+# 	$V->verbose(sprintf("%-15s %10d bp", "N$_", $filtered_Ns{$_}));
+# 	push @filtered_Ns, $filtered_Ns{$_};
+# }
+
+# # base content
+# my @BCs;
+# if(keys %BCs){
+# 	foreach my $k(sort keys %BCs){
+# 		$V->verbose(sprintf("%-15s %10d bp %10.2f %%", "[$k]", $BCs{$k}, (100*$BCs{$k}/$filtered_length)));
+# 		push @BCs, $BCs{$k};
+# 	}
+# }
+
+
+# $V->hline();
+# $V->nline();
+
+
+
+# if($opt{tfh}){
+#     print {$opt{tfh}} join("\t", scalar @filtered_L, $filtered_length, $filtered_longest, $filtered_shortest, @filtered_Ns, @BCs),"\n";
+# }
 
 
 
@@ -628,8 +675,8 @@ sub init{
                      ids_rename|ids-rename=s
                      desc_replace|desc-replace:s
                      desc_append|desc-append=s
-                     min_length|min-length=i
-                     max_length|max-length=i
+                     min_length|min-length|l=i
+                     max_length|max-length|L=i
                      fasta|A
                      fastq|Q=s
                      line_width|line-width|w=i
@@ -645,7 +692,7 @@ sub init{
                      trim_lcs|trim-lcs=s
                      substr=s
                      substr_perl_style|substr-perl-style
-                     N=s
+                     N|Nx=s
                      base_content|base-content=s
                      verbose=i
                      quiet|q!
@@ -958,30 +1005,6 @@ sub read_substrs{
 		}
 	}
 	return %s;
-}
-
-sub Nx{
-	my $p = {
-		total_length => undef,
-		lengths => undef,
-		Nxs => [@{$opt{_N}}],
-		@_
-	};
-
-	my %Ns;
-	my @L = sort{$b <=> $a}@{$p->{lengths}};
-	my @ls = map{$p->{total_length} * ($_/100)}@{$p->{Nxs}};
-
-	my $lc = 0;
-	foreach my $l (@L){
-		$lc+= $l;
-		if($lc >= $ls[0]){
-			shift @ls;
-			$Ns{shift @{$p->{Nxs}}} = $l;
-			last unless @ls;
-		}
-	}
-	return %Ns;
 }
 
 
