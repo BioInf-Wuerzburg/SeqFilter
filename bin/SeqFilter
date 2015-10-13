@@ -529,8 +529,8 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
         no warnings 'qw';
         print {$opt{sfh}} join("\t", qw(#source state reads total max min), (map{"N$_"}@{$opt{_N}}), (map{"%$_"}@{$opt{_base_content}})),"\n";
     }
-    print {$opt{sfh}} join("\t", $opt{in}[$i], "RAW", summary($STAT_raw[$i], $BC_raw[$i])),"\n";
-    print {$opt{sfh}} join("\t", $opt{in}[$i], "FIL", summary($STAT_fil[$i], $BC_fil[$i])),"\n" if $FILTERING;
+    print {$opt{sfh}} join("\t", $opt{labels}[$i], "RAW", summary($STAT_raw[$i], $BC_raw[$i])),"\n";
+    print {$opt{sfh}} join("\t", $opt{labels}[$i], "FIL", summary($STAT_fil[$i], $BC_fil[$i])),"\n" if $FILTERING;
 
 }
 
@@ -629,15 +629,19 @@ sub init{
         line_width => 80,
         rc => '',
         N => '90,50',
-        verbose => 2
+        verbose => 2,
     );
-    my %opt = (in => []);
+    my %opt = (
+        in => [],
+        smart_labels => 1
+    );
 
     GetOptions(
         \%opt, qw(
                      out=s
                      stdout|c
                      stats=s
+                     smart_labels|smart-labels!
                      ids=s
                      ids_exclude|ids-exclude
                      ids_pattern|ids-pattern=s
@@ -823,6 +827,12 @@ sub init_input{
         $V->verbose('Detected FASTA format');
     }
 
+    if ($opt{smart_labels}) {
+        $opt{labels} = [smart_labels(@{$opt{_in}})];
+    }else {
+        $opt{labels} = $opt{_in};
+    }
+    
     return $FASTQ;
 }
 
@@ -896,6 +906,51 @@ sub init_lists{
     %SUBSTR = read_substrs($opt{substr_fh}) if $opt{substr_file};
 }
 
+
+=head smart_labels
+
+=cut
+
+sub smart_labels{
+    my @ids = @_;
+    my @path;
+    my @base;
+    my $longest_path = 0;
+    foreach (@ids) {
+        my ($base, $path) = fileparse($_);
+        my $p = [reverse(split(/\//, $path))];
+        push @path, $p;
+        $longest_path = @$p if @$p > $longest_path;
+        push @base, $base;
+    }
+
+    if (is_unique(@base)) { # basenames are uniq
+        return @base;
+    } elsif ($longest_path){ # try to find minimal path that makes label unique
+        my @labels = @base;
+        for ( my $l=0; $l<$longest_path; $l++) {
+            for (my $i=0; $i<@labels; $i++) {
+                my $pre = $path[$i][$l];
+                next unless defined $pre;
+                $labels[$i] = $pre.'/'.$labels[$i];
+            }
+            return @labels if is_unique(@labels);
+        }
+    }
+    # couldn't create uniq labels from paths
+    my $x = 0;
+    return map{$x++; $_.="#$x"}@base
+    
+}
+
+sub is_unique{
+    my %seen;
+    foreach (@_) {
+        return if exists $seen{$_};
+        $seen{$_} = 1;
+    }
+    return 1;
+}
 
 =head2 print_summary
 
