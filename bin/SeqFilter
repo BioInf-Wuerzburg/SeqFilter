@@ -629,7 +629,7 @@ sub init{
         line_width => 80,
         rc => '',
         N => '90,50',
-        verbose => 2,
+        verbose => 1,
     );
     my %opt = (
         in => [],
@@ -668,6 +668,7 @@ sub init{
                      substr_perl_style|substr-perl-style
                      N|Nx=s
                      base_content|base-content=s
+                     progress|p!
                      verbose=i
                      quiet|q!
                      help|h!
@@ -677,6 +678,7 @@ sub init{
 
     $opt{help} && pod2usage(1);
     if ($opt{version}){ print "$VERSION\n"; exit(0) };
+    $opt{verbose} = 2 if $opt{progress};
     $opt{verbose} = 0 if $opt{quiet};
 
     %opt = (%def, %opt);
