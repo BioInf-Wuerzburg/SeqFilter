@@ -534,47 +534,21 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
 }
 
-=head2 print_summary
 
-=cut
-
-sub summary{
-    my ($ls, $bc) = @_;
-
-    # Nx: get lengths sorted
-    my @ls = sort{$a<=>$b}keys %$ls;
-    my $sc = 0;
-    $sc+= $_ for values %$ls;
-    my @bps = map{ $ls->{$_} * $_ }@ls;
-    my $bps = 0;
-    $bps+= $_ for @bps;
-
-    my @nbp = map{$bps/100*(100-$_)}@{$opt{_N}};
-    my @ni;
-    #print Dumper(\@bps, \@nbp); use Data::Dumper;
-    foreach my $nbp (@nbp) {
-        my $bps_cum = 0;
-        for (my $i=0; $i<@bps; $i++) {
-            $bps_cum+= $bps[$i];
-            if ($bps_cum > $nbp){
-                push @ni, $i;
-                last;
-            }
-        }
-    }
-
-    my @bc;
-    @bc = map{sprintf("%0.2f", $bc->{$_}/$bps*100)} sort keys %$bc if $bc;
-
-    if ($sc) {
-        return $sc, $bps,  $ls[-1], $ls[0], @ls[@ni], @bc;
-    }else {
-        return $sc, $bps, ("NA") x (2 + @nbp + @{$opt{_base_content}});
-    }
-
+# total stats for multiple files
+if (@{$opt{_in}} > 1) {
+    print {$opt{sfh}} join("\t", "TOTAL", "RAW", summary(hash_merge_sum(@STAT_raw), hash_merge_sum(@BC_raw))),"\n";
+    print {$opt{sfh}} join("\t", "TOTAL", "FIL", summary(hash_merge_sum(@STAT_fil), hash_merge_sum(@BC_fil))),"\n" if $FILTERING;
 }
 
-## legacy stats
+
+
+
+
+
+
+
+##  legacy stats
 
 # #Nx computation
 # if($opt{N}){
@@ -819,7 +793,7 @@ sub init_input{
         my $fh = $opt{ifhs}[$i];
         $V->verbose("Waiting for STDIN ..") if $opt{_in}[$i] eq '-';
         my $c =$fh->getc();                           # read first char
-        $V->exit("No data at $opt{in}\n") unless $c; # empty file
+        $V->exit("No data at $opt{in}[$i]\n") unless $c; # empty file
         $fh->ungetc(ord($c));                         # unread first char
         $f.=$c;
     }
@@ -920,6 +894,62 @@ sub init_lists{
     (@IDS_PATTERS = <$opt{ids_pattern_fh}>) if $opt{ids_pattern};
     chomp(@IDS_PATTERS);
     %SUBSTR = read_substrs($opt{substr_fh}) if $opt{substr_file};
+}
+
+
+=head2 print_summary
+
+=cut
+
+sub summary{
+    my ($ls, $bc) = @_;
+
+    # Nx: get lengths sorted
+    my @ls = sort{$a<=>$b}keys %$ls;
+    my $sc = 0;
+    $sc+= $_ for values %$ls;
+    my @bps = map{ $ls->{$_} * $_ }@ls;
+    my $bps = 0;
+    $bps+= $_ for @bps;
+
+    my @nbp = map{$bps/100*(100-$_)}@{$opt{_N}};
+    my @ni;
+    #print Dumper(\@bps, \@nbp); use Data::Dumper;
+    foreach my $nbp (@nbp) {
+        my $bps_cum = 0;
+        for (my $i=0; $i<@bps; $i++) {
+            $bps_cum+= $bps[$i];
+            if ($bps_cum > $nbp){
+                push @ni, $i;
+                last;
+            }
+        }
+    }
+
+    my @bc;
+    @bc = map{sprintf("%0.2f", $bc->{$_}/$bps*100)} sort keys %$bc if $bc;
+
+    if ($sc) {
+        return $sc, $bps,  $ls[-1], $ls[0], @ls[@ni], @bc;
+    }else {
+        return $sc, $bps, ("NA") x (2 + @nbp + @{$opt{_base_content}});
+    }
+
+}
+
+
+=head2 hash_merge_sum
+
+=cut
+
+sub hash_merge_sum{
+    my %stat;
+    foreach (@_) {
+        while (my ($k, $v) = each %$_){
+            $stat{$k}+=$v;
+        }
+    }
+    return \%stat
 }
 
 
