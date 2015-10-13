@@ -654,7 +654,7 @@ sub init{
                      fasta|A
                      fastq|Q=s
                      line_width|line-width|w=i
-                     rc|rev_comp|rev-comp=s
+                     rc|rev_comp|rev-comp:s
                      check_format|check-format
                      lower_case|lower-case
                      upper_case|upper-case
@@ -888,8 +888,8 @@ sub init_lists{
     }
 
 
-    if ($opt{rc}) {
-        if ($opt{rc} eq '*') {
+    if (defined $opt{rc}) {
+        if ($opt{rc} eq '') {
             $RC_ALL++;
         } elsif ($opt{rc} eq '-' && $opt{ids} eq '-') {
             if ($opt{ids_exclude}) {
