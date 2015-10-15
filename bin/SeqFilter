@@ -3,8 +3,7 @@
 use warnings;
 use strict;
 
-use Getopt::Long;
-Getopt::Long::Configure ("bundling");
+use Getopt::Long qw(:config no_ignore_case bundling);
 use Pod::Usage;
 
 use FindBin qw($RealBin);
@@ -35,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.0.0';
+our $VERSION = '2.1.0';
 
 =head1 NAME
 
@@ -254,6 +253,11 @@ Report relative amount of given bases. Takes a "," separated
  list, each element of the list can be one or more bases (cummulative).
 
   --base-composition=GC,N        # combined GC and N content
+
+=item -H|--histogram
+
+Plot distribution of bases by length as ASCII plot. Uses linear scale for data
+sets with difference in order of magnitude <= 3, log scale otherwise.
 
 =item -p|--progress
 
@@ -512,10 +516,13 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
     if ($i == 0 ) {
         no warnings 'qw';
-        print {$opt{sfh}} join("\t", qw(#source state reads total max min), (map{"N$_"}@{$opt{_N}}), (map{"%$_"}@{$opt{_base_content}})),"\n";
+        print {$opt{sfh}} join("\t", qw(#source state reads bases max min), (map{"N$_"}@{$opt{_N}}), (map{"%$_"}@{$opt{_base_content}})),"\n";
     }
     print {$opt{sfh}} join("\t", $opt{labels}[$i], "RAW", summary($STAT_raw[$i], $BC_raw[$i])),"\n";
     print {$opt{sfh}} join("\t", $opt{labels}[$i], "FIL", summary($STAT_fil[$i], $BC_fil[$i])),"\n" if $FILTERING;
+    if ($opt{histogram}) {
+        histogram(data => [$FILTERING ? ($STAT_raw[$i], $STAT_fil[$i]) : ($STAT_raw[$i])]);
+    }
 
 }
 
@@ -525,10 +532,6 @@ if (@{$opt{_in}} > 1) {
     print {$opt{sfh}} join("\t", "TOTAL", "RAW", summary(hash_merge_sum(@STAT_raw), hash_merge_sum(@BC_raw))),"\n";
     print {$opt{sfh}} join("\t", "TOTAL", "FIL", summary(hash_merge_sum(@STAT_fil), hash_merge_sum(@BC_fil))),"\n" if $FILTERING;
 }
-
-
-
-
 
 
 
@@ -618,7 +621,7 @@ sub init{
     );
     my %opt = (
         in => [],
-        smart_labels => 1
+        smart_labels => 1,
     );
 
     GetOptions(
@@ -652,7 +655,8 @@ sub init{
                      substr=s
                      substr_perl_style|substr-perl-style
                      N|Nx=s
-                     base_content|base-content|base-composition|B=s
+                     base_content|base-content|base-composition|C=s
+                     histogram|H!
                      progress|p!
                      verbose=i
                      quiet|q!
@@ -819,7 +823,7 @@ sub init_input{
     }else {
         $opt{labels} = $opt{_in};
     }
-    
+
     return $FASTQ;
 }
 
@@ -927,7 +931,7 @@ sub smart_labels{
     # couldn't create uniq labels from paths
     my $x = 0;
     return map{$x++; $_.="#$x"}@base
-    
+
 }
 
 sub is_unique{
@@ -978,6 +982,97 @@ sub summary{
     }
 
 }
+
+
+=head2 histogram
+
+=cut
+
+sub histogram{
+    my %p = (
+        data => [],
+        bins => 10,
+        width => 20,
+        @_
+    );
+
+    my @data = @{$p{data}};
+    die "data required\n" unless @data;
+    my @ls = sort{$a<=>$b}keys %{$data[0]};
+
+    # don't need hist if there are only 1 or 2 different lengths
+    return if (@ls < 3);
+
+    my $max = $ls[-1];
+    my $min = $ls[0];
+    my @bb;
+    my @bc;
+    my $br = $max - $min;
+    my $bs = 0;
+    my @total;
+    my @data_passed;
+
+    if ( $max / $min > 1000) { # very different lengths - log scale
+        my @ignore;
+        for (my $i=0; $i<@data; $i++) {
+            my $total;
+            foreach my $l (@ls) {
+                my $v=$data[$i]{$l} || 0;
+                my $x = $l*$v;
+                $total+=$x;
+                my $k = "1e".(length($l)-1);
+                $bb[$i]{$k}+=$x;
+                $bc[$i]{$k}+=$v;
+            }
+            if ($total) {
+                push @total, $total;
+                push @data_passed, $data[$i] if $total;
+            }
+        }
+
+    }else { # symetric bins
+        $bs = ($br+1)/($p{bins}+1);
+        my @ignore;
+        for (my $i=0; $i<@data; $i++) {
+            my $total;
+            foreach my $l (@ls) {
+                my $v=$data[$i]{$l} || 0;
+                my $x = $l*$v;
+                $total+=$x;
+                my $k = int(int(($l-$min)/$bs)*$bs+$min);
+                $bb[$i]{$k}+=$x;
+                $bc[$i]{$k}+=$v;
+            }
+            if ($total) {
+                push @total, $total;
+                push @data_passed, $data[$i] if $total;
+            }
+        }
+    }
+
+    my $total = $total[0];
+    @data = @data_passed;
+    return unless @data;
+
+    my @hfac = map{
+        my $hmax = (sort{$b <=> $a} values %{$bb[$_]})[0] || 0;
+        $p{width} / $hmax;
+    }(0..$#data);
+
+    printf {$opt{sfh}} "#%-$p{width}s\tmin\treads\tbases\n", "histogram";
+    foreach ( sort{$b <=> $a}keys %{$bb[0]}) {
+        my $f = $_ * $bs +$min;
+        printf {$opt{sfh}} "#%-$p{width}s\t%s\t%d\t%d\n", "*" x int($bb[0]{$_}*$hfac[0]), $_, $bc[0]{$_}, $bb[0]{$_};
+    }
+    if (@data > 1) {
+        printf {$opt{sfh}} "#%-$p{width}s\tmin\treads\tbases\n", "filtered";
+        foreach ( sort{$b <=> $a}keys %{$bb[0]}) {
+            #my $f = $_ * $bs +$min;
+            printf {$opt{sfh}} "#%-$p{width}s\t%s\t%d\t%d\n", "-" x int($bb[1]{$_}*$hfac[1]), $_, $bc[1]{$_}, $bb[1]{$_};
+        }
+    }
+}
+
 
 
 =head2 hash_merge_sum
