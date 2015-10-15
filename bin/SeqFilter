@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.1';
+our $VERSION = '2.1.2';
 
 =head1 NAME
 
@@ -529,8 +529,17 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
 # total stats for multiple files
 if (@{$opt{_in}} > 1) {
-    print {$opt{sfh}} join("\t", "TOTAL", "RAW", summary(hash_merge_sum(@STAT_raw), hash_merge_sum(@BC_raw))),"\n";
-    print {$opt{sfh}} join("\t", "TOTAL", "FIL", summary(hash_merge_sum(@STAT_fil), hash_merge_sum(@BC_fil))),"\n" if $FILTERING;
+    my $total_stat_raw = hash_merge_sum(@STAT_raw);
+    my $total_bc_raw = hash_merge_sum(@BC_raw);
+    my $total_stat_fil = hash_merge_sum(@STAT_fil);
+    my $total_bc_fil = hash_merge_sum(@BC_fil);
+
+
+    print {$opt{sfh}} join("\t", "TOTAL", "RAW", summary($total_stat_raw, $total_bc_raw )),"\n";
+    print {$opt{sfh}} join("\t", "TOTAL", "FIL", summary($total_stat_fil, $total_bc_fil)),"\n" if $FILTERING;
+    if ($opt{histogram}) {
+        histogram(data => [$FILTERING ? ($total_stat_raw, $total_stat_fil) : ($total_stat_raw)]);
+    }
 }
 
 
