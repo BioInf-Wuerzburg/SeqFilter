@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.0';
+our $VERSION = '2.1.1';
 
 =head1 NAME
 
@@ -794,11 +794,11 @@ sub init_input{
     }
 
     if ( $f =~ tr/@>//c ) {
-        die "$f, file w/ unknown format\n";
+        die "File with unknown format, first characters: $f\n";
     }
     $FASTQ = $f =~ tr/@//;
     if ( $FASTQ && $f =~ tr/>//) {
-        die "$f, files w/ mixed formats\n";
+        die "Files with mixed formats, first characters: $f\n";
     }
 
     if ( $FASTQ ) {
