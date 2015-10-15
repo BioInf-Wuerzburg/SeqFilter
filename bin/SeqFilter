@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.2';
+our $VERSION = '2.1.3';
 
 =head1 NAME
 
@@ -635,7 +635,7 @@ sub init{
 
     GetOptions(
         \%opt, qw(
-                     out=s
+                     out|o=s
                      stdout|c
                      stats=s
                      smart_labels|smart-labels!
@@ -719,8 +719,12 @@ sub init{
 
     # stat file handle
     if ($opt{stats} eq '-'){
-        $opt{sfh} = $opt{stdout} ? \*STDERR : \*STDOUT;
-        $V->verbose("Redirecting stats to STDERR, STDOUT already in use");
+        if ( $opt{stdout} ){
+            $opt{sfh} = \*STDERR;
+            $V->verbose("Redirecting stats to STDERR, STDOUT already in use");
+        }else {
+            $opt{sfh} = \*STDOUT;
+        }
     } else {
         open($opt{sfh}, ">", $opt{stats}) || $V->exit("Can't open stats file: '$opt{stats}'");
     }
