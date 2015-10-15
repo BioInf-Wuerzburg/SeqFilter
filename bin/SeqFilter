@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.3';
+our $VERSION = '2.1.4';
 
 =head1 NAME
 
@@ -257,7 +257,7 @@ Report relative amount of given bases. Takes a "," separated
 =item -H|--histogram
 
 Plot distribution of bases by length as ASCII plot. Uses linear scale for data
-sets with difference in order of magnitude <= 3, log scale otherwise.
+sets with difference in order of magnitude < 2, log scale otherwise.
 
 =item -p|--progress
 
@@ -1025,7 +1025,7 @@ sub histogram{
     my @total;
     my @data_passed;
 
-    if ( $max / $min > 1000) { # very different lengths - log scale
+    if ( $max / $min >= 100) { # very different lengths - log scale
         my @ignore;
         for (my $i=0; $i<@data; $i++) {
             my $total;
