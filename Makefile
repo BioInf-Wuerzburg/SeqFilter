@@ -8,3 +8,8 @@ all:
 	mv perl5lib-Fastq/lib/* lib
 	mv perl5lib-Verbose/lib/* lib
 	rm -fr perl5lib*
+
+readme:
+	echo "#+BEGIN_SRC" > README.org
+	bin/SeqFilter --help >> README.org
+	echo "#+END_SRC" >> README.org

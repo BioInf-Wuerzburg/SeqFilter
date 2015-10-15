@@ -1,48 +1,34 @@
-#+BEGIN_SRC 
+#+BEGIN_SRC
 Usage:
-      perl SeqFilter --in <SEQFILE> <OPTIONS> --out <OUTFILE>
-  
-      cat <SEQFILE> | SeqFilter <OPTIONS> --out '-' > OUTFILE
+      SeqFilter <fa/fq>
+      SeqFilter [filter] <fa/fq> --out <fa/fq>
+      cat <fa/fq> | SeqFilter [filter] --out - | ...
 
 Options:
-    [--in=<FASTA/FASTQ>]
-        Input FASTA/FASTQ file. Default STDIN.
+    -o|--out <FILE/-> [OFF]
+    -c|--stdout
+        Output to file. -c for STDOUT.
 
-    [--out=<FILE/->]
-        Output file. Default off. Specify '-' for STDOUT.
+    --stats <FILE> [-]
+        Print stats to file. Default STDOUT or STDERR if STDOUT is in use.
 
-    [--tsv=<STRING/->]
-        Print tab separated statistics of data AFTER filtering to pathname,
-        default off, specify '-' for STDOUT, but only if '--out' is not
-        redirected to STDOUT.
+    --ids <FILE/-/IDLIST>
+    --ids-exclude
+        File of sequence IDs or literal list of IDs to be reported. Reads
+        comma-, whitespace and newline separated lists. Leading '>' or '@'
+        are ignored.
 
-        Column order is: number of sequences, total length, longest,
-        shortest, Nx-values, base-contents. No header is printed, so
-        multiple runs can simply be concatenated.
+          SeqFilter fasta.fa --ids "seq35,seq49"  # list
+          SeqFilter fasta.fa --ids ids.list       # file
 
-    [--ids=<FILE/-/IDLIST>]
-        Pathname to file of sequence IDs or a literal list of IDs to be
-        reported. Reads comma-separated, whitespace and newline separated
-        lists. Specify '-' to read IDs form STDIN. Leading '>' or '@' are
-        allowed but not necessary.
-
-          # get two seqs by ID
-          SeqFilter fasta.fa --ids "seq35,seq49"
-          # read ids from file
-          SeqFilter fasta.fa --ids ids.list
-
-    [--ids-exclude]
-        Exclude reads specified by --ids from being reported. Default off.
-
-    [--ids-pattern=<FILE/-/PATTERNLIST>]
-        A PATTERN or a link to a file containing multiple PATTERN, one per
-        line, to match against sequence ids. Only matching sequences will be
+    --ids-pattern <FILE/-/PATTERNLIST>
+    --ids-split
+        A Perl PATTERN or a link to a file containing multiple PATTERN, one
+        per line, to match against sequence ids. Matching sequences will be
         returned.
 
-          # get seqs with ids matching pattern
-          SeqFilter seqs.fq --ids-patt 'comp2_c13_seq*|comp2_c88_seq*'
+          SeqFilter seqs.fq --ids-patt 'comp2_c13_seq.*|comp2_c88_seq.*'
 
-    [--ids-split]
         Extend use of --ids-pattern from only identifying sequences to also
         splitting them into different files according to a REQUIRED first
         capture group in the match. If capture group is empty, sequences are
@@ -50,7 +36,7 @@ Options:
         multiple matches, all but the first match are ignored.
 
           # split seqs by library (LIB1, LIB2, LIB14)
-          SeqFilter multilib.fq --ids-pattern '\w+(\d+)' --split-ids
+          SeqFilter multilib.fq --ids-pattern '\w+(\d+)' --ids-split
           # creates multilib1.fq, multilib2.fq, multilib14.fq
 
         NOTE: Perl needs to open a filehandle to every split file, this can
@@ -58,7 +44,7 @@ Options:
         1000 different files with occurances of patterns randomly mixed in
         source file.
 
-    [--ids-rename=<PATTERN>]
+    --ids-rename <PATTERN>
         Provide a perl substitution pattern as string. The pattern is
         applied to every id. Use global "$COUNT" to access the output
         sequence counter, $PICARD to access the picard number.
@@ -68,52 +54,49 @@ Options:
           # @MYLIB_00001/1
           # @MYLIB_00002/1 ...
 
-    [--desc-replace]
-        Replace description from sequence header in output. Without argument
-        removes entire description.
+    --desc-replace
+    --desc-append
+        Remove (no arg)/replace/append description of sequences.
 
-    [--desc-append]
-        Append description of sequence header in output.
-
-    [--min-length=<INT>]
+    -l|--min-length <INT>
         Minimum sequence length.
 
-    [--max-length=<INT>]
+    -L|--max-length <INT>
         Maximum length for sequences to be retrieved. Default off.
 
-    [--fasta]
-        FASTQ only. output FASTA format. Default FASTQ.
+    -A|--fasta
+    -Q|--fastq <CHAR>
+        Convert FASTQ/FASTA to FASTA/FASTQ, respectively.
 
-    [--fastq=<CHAR>]
-        FASTA only. Generate FASTQ using <CHAR> as quality.
+    -w|--line-width [80 for FASTA]
+        FASTA only. Set 0 for single line. Ignored for FASTQ.
 
-    [--line-width] [0]
-        Line width for FASTA sequences. Set 0 for single line.
-
-    [--rev-comp=<FILE/-/LIST/*>]
-        Pathname to file of sequence IDs or list of IDs to be transformed,
-        "*" to transform all sequences. Formatting follows the same rules as
+    --rc|--rev-comp <FILE/-/LIST>
+        File of sequence IDs or list of IDs to be transformed, no argument
+        to transform all sequences. Formatting follows the same rules as
         --ids files.
 
-    [--check-format]
+    --careful [OFF]
         FASTQ only. Check every FASTQ record to have a valid format. '@/+'
         at the start of id lines, sequence and quality of identical length,
         phred within boundaries. Slows down the parsing.
 
-    [--lower-case/--upper-case]
+    --lower-case
+    --upper-case
         Convert output sequence to lower/upper case.
 
-    [--iupac-to-N]
+    --iupac-to-N
         Convert non [ATGCNatgcn] characters to N.
 
-    [--phred-offset] [auto]
-        FASTQ only. Phred offset for quality scores. Default auto-detect.
+    --phred-offset [auto]
+        FASTQ only. Specify Phred offset for quality scores. Default
+        auto-detect.
 
-    [--phred-transform]
+    --phred-transform
         FASTQ only. Transform phreds from input offset to specified
         "--phred-transform" offset, usually 33 to 64 or wise versa.
 
-    [--phred-mask]
+    --phred-mask
         FASTQ only. At least two values separated by ",", e.g "0,10" to mask
         all Nucleotides with phred below 10 with an "N". Optional additional
         values control:
@@ -127,7 +110,7 @@ Options:
 
         NOTE: Requires "--phred-offset".
 
-    [--trim-window=<INT1>,[<INT2>],[<INT3>]]
+    --trim-window <INT1>,[<INT2>],[<INT3>]
         FASTQ only. Trim sequences to quality >= SOFT,HARD,SIZE in a sliding
         window, default 10. The sliding window allows to have positions
         below the SOFT cutoff provided the window mean is higher than SOFT.
@@ -136,7 +119,7 @@ Options:
         within the remaining sequence, not at its start/end and b) windows
         never overlap eachother.
 
-    [--trim-lcs=<INT,INT,INT>]
+    --trim-lcs <INT,INT,INT>
         FASTQ only. Three values separated by ",", e.g. "30,40,50" to grep
         all stretches of quality >= 30 and minimum length 50 from the
         sequences. Faster than "--trim-window" yet breaks sequences even on
@@ -149,7 +132,7 @@ Options:
         will generate sequences with qualities of at least 5 at every
         position and a window mean of 10.
 
-    [--substr=<FILE/-/LIST>]
+    --substr <FILE/-/LIST>
         Pathname to a FILE containing information for subseq
         extraction/modification. The format is a tsv, by default lines of
         the format ID FROM TO are expected. Lines prepened by '#' are
@@ -170,7 +153,7 @@ Options:
           FROM TO:
             # extract sequence from pos 10 to pos 50
             read1 10 50
-  
+
           OFFSET [LENGTH [REPLACEMENT]]
             # trim read1 head and tail by 10
             read1   10
@@ -182,38 +165,40 @@ Options:
             *   5
             *   -5
 
-    [--substr-perl-style]
+    --substr-perl-style
         By default, substr information are read according to the format FROM
         TO. Set this flag to switch the behaviour to perl substr() like
         style of "OFFSET [LENGTH [REPLACEMENT]]"
 
-    [--N=<INT,INT...>]
-        Report Nx value (N50, N90...). Specify multiple values as comma
-        separated STRING. Takes filter settings into account. Result might
-        be ommited if to few sequences are retrieved. Default "50,90".
+    -N|--Nx <INT,INT...>
+        Report Nx value (N50, N90...). Default "50,90".
 
-    [--base-content=<BASE(S),BASE(S),BASE(S),...>]
-        Count and print the relative amount of given bases. Takes a ","
-        separated list, each element of the list can be one or more bases.
-        In the letter case the commulative amount of the individual bases is
-        calculated.
+    -C|--base-composition <BASE(S),BASE(S),BASE(S),...>
+        Report relative amount of given bases. Takes a "," separated list,
+        each element of the list can be one or more bases (cummulative).
 
-        Examples: --base-content=A,T,G,C,N # content of regular bases
-        --base-content=GC # combined GC content
+          --base-composition=GC,N        # combined GC and N content
 
-    --verbose=<INT>
-        Toggle verbose level, default 2, which outputs statistics and
-        progress. Set 1 for statistics only or 0 for no verbose output.
+    -H|--histogram
+        Plot distribution of bases by length as ASCII plot. Uses linear
+        scale for data sets with difference in order of magnitude <= 3, log
+        scale otherwise.
 
-    --quiet
+    -p|--progress
+        Display progress bars (eq. '--verbose 2')
+
+    -q|--quiet
         Omit all verbose messages. The same as --verbose=0, Superceeds
         --verbose settings.
 
-    [--help]
+    --verbose <INT>
+        Toggle verbose level, default 2, which outputs statistics and
+        progress. Set 1 for statistics only or 0 for no verbose output.
+
+    -h|--help
         Display this help
 
-    [--version|-V]
+    -V|--version
         Display current version
-
 
 #+END_SRC

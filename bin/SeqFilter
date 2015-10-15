@@ -674,7 +674,7 @@ sub init{
              )
     ) or pod2usage(-verbose => 0, -exitval => 1);
 
-    $opt{help} && pod2usage(1);
+    $opt{help} && pod2usage(0);
     if ($opt{version}){ print "$VERSION\n"; exit(0) };
     $opt{verbose} = 2 if $opt{progress};
     $opt{verbose} = 0 if $opt{quiet};
