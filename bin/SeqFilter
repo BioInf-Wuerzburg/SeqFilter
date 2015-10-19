@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.4';
+our $VERSION = '2.1.5';
 
 =head1 NAME
 
@@ -624,7 +624,7 @@ sub init{
         ids_exclude => 0,
         min_length => 0,
         line_width => 80,
-        rc => '',
+        rc => undef,
         N => '90,50',
         verbose => 1,
     );
