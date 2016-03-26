@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.5';
+our $VERSION = '2.1.6';
 
 =head1 NAME
 
@@ -731,7 +731,7 @@ sub init{
 
     if ($opt{phred_mask}) {
 
-        $opt{_phred_mask} = split(',', $opt{phred_mask});
+        @{$opt{_phred_mask}} = split(',', $opt{phred_mask});
         unless (@{$opt{_phred_mask}} > 1) {
             $V->exit("--phred-mask requires at least to values");
         }
