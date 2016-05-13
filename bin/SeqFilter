@@ -334,7 +334,7 @@ my @filters = qw(
                     phred_mask
                     trim_window
                     trim_lcs
-                    substr
+                    substr_file
                     substr_perl_style
             );
 my $FILTERING = grep{$_}@opt{@filters};
@@ -661,7 +661,7 @@ sub init{
                      phred_mask|phred-mask=s
                      trim_window|trim-window=s
                      trim_lcs|trim-lcs=s
-                     substr=s
+                     substr_file|substr=s
                      substr_perl_style|substr-perl-style
                      N|Nx=s
                      base_content|base-content|base-composition|C=s
