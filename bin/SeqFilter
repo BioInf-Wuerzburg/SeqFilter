@@ -419,6 +419,7 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
 		}
 	    }
+	    next LOOP unless @tmp;
 	    @fq = @tmp ? @tmp : @fq;
 	}
 
