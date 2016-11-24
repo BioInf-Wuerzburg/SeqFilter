@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.6';
+our $VERSION = '2.1.7';
 
 =head1 NAME
 
@@ -904,8 +904,7 @@ sub init_lists{
         }
     }
 
-
-    (@IDS_PATTERS = <$opt{ids_pattern_fh}>) if $opt{ids_pattern};
+    (@IDS_PATTERS = readline($opt{ids_pattern_fh})) if $opt{ids_pattern};
     chomp(@IDS_PATTERS);
     %SUBSTR = read_substrs($opt{substr_fh}) if $opt{substr_file};
 }
