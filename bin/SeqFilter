@@ -10,8 +10,12 @@ use FindBin qw($RealBin);
 use lib "$RealBin/../lib/";
 use File::Basename;
 
-use Verbose;
-use Verbose::ProgressBar;
+#use Verbose;
+use Log::Log4perl;
+
+#use Verbose::ProgressBar;
+
+use Term::ProgressBar;
 
 use Fastq::Parser 0.09;
 use Fastq::Seq 0.12;
@@ -461,14 +465,17 @@ $opt_verbose = 0 if $opt_quiet;
 
 =cut
 
-my $V = Verbose->new(
-	level => 1,
-	report_level => $opt_verbose,
-	line_width => 80,
+#my $V = Verbose->new(
+#	level => 1,
+#	report_level => $opt_verbose,
+#	line_width => 80,
 	
-);
+#);
 
-$V->verbose("$0-$VERSION");
+#$V->verbose("$0-$VERSION");
+
+$L = Log::Log4perl::get_logger();
+
 
 
 ##------------------------------------------------------------------------##
@@ -484,10 +491,10 @@ my $opt_stdin;
 
 
 if($opt_in ne '-'){
-	$V->exit("Cannot find input file: $opt_in") if ! -f $opt_in;
+	$L->logexit("Cannot find input file: $opt_in") if ! -f $opt_in; 
 
         if( -s $opt_in == 0){
-            $V->verbose("Empty input file: $opt_in");
+            $L->info("Empty input file: $opt_in");
             exit(0);
         }
 
@@ -496,7 +503,7 @@ if($opt_in ne '-'){
 }
 
 # Fasta parser
-$V->verbose("--in: ".( $opt_in ne '-' ? $opt_in : "STDIN" ));
+$L->info("--in: ".( $opt_in ne '-' ? $opt_in : "STDIN" ));
 
 my $FP;
 my $FASTQ;
@@ -514,27 +521,55 @@ if(
 	};
 	pod2usage(msg=>'Could not guess phred offset, please specify manually', exitval => 2) 
 		unless $opt_offset;
-	$V->verbose('Detected FASTQ format, phred-offset '.$opt_offset);
+	$L->info('Detected FASTQ format, phred-offset '.$opt_offset);
 }elsif(
 	$FP = Fasta::Parser->new(
 		file => $opt_in eq '-' ? undef : $opt_in, # defaults to STDIN if undef
 	)->check_format
 ){
 	$FASTQ = 0;
-	$V->verbose('Detected FASTA format');
+	$L->info('Detected FASTA format');
 }else{
-	$V->exit(( $opt_in ? $opt_in : "STDIN" )." neither FASTA nor FASTQ") unless $FP;
+	$L->logexit(( $opt_in ? $opt_in : "STDIN" )." neither FASTA nor FASTQ") unless $FP;
 }
 
 # a fix to handle gzipped files, -s doesnt work on gzip 
 my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh; 
 
-my $VPB = Verbose::ProgressBar->new(
-	level => 2,
-	report_level => $opt_verbose,
-	size => $file_size, # size and _fh required for gzip fix
-	_fh => $FP->fh(),
-);
+
+my $pg_count = -1;
+
+if (defined($opt_in)) {
+    open(my $in_fh, $opt_in) or die "Couldn't open file, '$opt_reads[$FC]: $!";
+    my $wc_output = `wc -l $opt_in`;
+    chomp($wc_output);
+    $wc_output =~ /^\s*(\d+)(\D.*)?/ or die "Couldn't parse wc output: $wc_output";
+    
+    if($FASTQ == 1){
+	$pg_count = $1/4;
+    }
+    else
+    {
+	$pg_count = $1;
+    }
+    close $in_fh or die;
+}
+
+
+my $TPB = Term::ProgressBar->new({
+    name => 'SeqFilter',
+    count => $pg_count,
+    ETA => 'linear',
+    term_width = 100,
+				 });
+
+
+#my $VPB = Verbose::ProgressBar->new(
+#	level => 2,
+#	report_level => $opt_verbose,
+#	size => $file_size, # size and _fh required for gzip fix
+#	_fh => $FP->fh(),
+#);
 
 
 # output file
@@ -543,7 +578,7 @@ if($opt_out){
 	if($opt_out eq '-'){
 		$ofh = \*STDOUT;
 	}else{
-		open($ofh, ">", $opt_out) || $V->exit("Can't open output read file: '$opt_out'");
+		open($ofh, ">", $opt_out) || $L->logexit("Can't open output read file: '$opt_out'");
 	} 
 }
 
@@ -564,7 +599,7 @@ my %opt_fq_only = (
 
 if(!$FASTQ){
 	while (my ($k,$v) = each %opt_fq_only){
-		defined $v && $V->exit("$k can only be used on FASTQ data"); 
+		defined $v && $L->logexit("$k can only be used on FASTQ data"); 
 	}
 }
 
@@ -576,9 +611,9 @@ my %opt_fa_only = (
 if($FASTQ){
     while (my ($k,$v) = each %opt_fa_only){
         if($k eq 'line-width'){ # special case, allowed in comb. with --fasta
-            defined $v && ! $opt_fasta && $V->exit("$k can only be used on FASTA data");
+            defined $v && ! $opt_fasta && $L->logexit("$k can only be used on FASTA data");
         }else{
-            defined $v && $V->exit("$k can only be used on FASTA data");
+            defined $v && $L->logexit("$k can only be used on FASTA data");
         }
     }
 }
@@ -617,13 +652,13 @@ if($opt_rc){
 		$RC_ALL++;
 	}elsif($opt_rc eq '-' && $opt_ids eq '-'){
 		if($opt_ids_exclude){
-			$V->exit("It does not make sense to rev-comp the same ids you are going to exclude!");
+			$L->logexit("It does not make sense to rev-comp the same ids you are going to exclude!");
 		}
 		%RC_IDS = %IDS;
 	}elsif(-f $opt_rc){
-		open($opt_rc_fh, '<', $opt_rc) or $V->exit("$!: $opt_rc");
+		open($opt_rc_fh, '<', $opt_rc) or $L->logexit("$!: $opt_rc");
 	}else{
-		open($opt_rc_fh, '<', \$opt_rc) or $V->exit("$!: $opt_rc");
+		open($opt_rc_fh, '<', \$opt_rc) or $L->logexit("$!: $opt_rc");
 	}
 	%RC_IDS = read_ids($opt_rc_fh) if $opt_rc_fh;
 }
@@ -647,7 +682,7 @@ if($opt_tsv){
 	if($opt_tsv eq '-' && (!defined($opt_out) || $opt_out ne '-')){
 		$tsv = \*STDOUT;
 	}else{
-		open($tsv, ">", $opt_tsv) || $V->exit("Can't open tsv stats file: '$opt_tsv'");
+		open($tsv, ">", $opt_tsv) || $L->logexit("Can't open tsv stats file: '$opt_tsv'");
 	} 
 }
 
@@ -657,7 +692,7 @@ if($opt_mask){
 
     @opt_mask = split(',', $opt_mask);
     unless (@opt_mask > 1){
-        $V->exit("--phred-mask requires at least to values");
+        $L->logexit("--phred-mask requires at least to values");
     }
     
     $opt_mask_advanced = 1 if @opt_mask > 2;
@@ -686,7 +721,7 @@ if($opt_check_format){
 }
 
 if($opt_fastq && length $opt_fastq != 1){
-    $V->exit("--fastq needs to be a single character!");
+    $L->logexit("--fastq needs to be a single character!");
 }
 
 # TOTAL
@@ -717,7 +752,7 @@ my %BCs; # base contents
 # loop through FASTQ
 LOOP: while (my $SEQ = $FP->next_seq()){
 	$total_count++;
-	$VPB->update();
+	$TPB->update();
 	
 	my $ID = $SEQ->id;
 	my $length = length($SEQ->seq);
@@ -803,7 +838,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 			    $PICARD = $SEQ->picard() || '';
 			}
 			eval '$id =~ '.$opt_ids_rename;
-			$V->exit("Evaluation --ids-rename pattern failed. Make sure it is a valid perl substitution pattern\n".$@) if $@;
+			$L->logexit("Evaluation --ids-rename pattern failed. Make sure it is a valid perl substitution pattern\n".$@) if $@;
 			$SEQ->id($id);
 		}
 
@@ -870,7 +905,7 @@ LOOP: while (my $SEQ = $FP->next_seq()){
 }
 
 #TODO: adjust to file_s
-$VPB->finish($file_size);
+$TPB->update($pg_count);
 
 
 =head2 print summary
@@ -883,37 +918,38 @@ if(@opt_N){
 	%total_Ns = Nx(total_length => $total_length, lengths => [@total_L], Nxs => [@opt_N]);
 }
 
-$V->hline();
-$V->verbose('Input');
-$V->verbose(sprintf("%-15s %10d #","Sequences", $total_count));
-$V->verbose(sprintf("%-15s %10d bp", "Total", $total_length));
-$V->verbose(sprintf("%-15s %10d bp", "Longest", $total_longest));
-$V->verbose(sprintf("%-15s %10d bp", "Shortest",$total_shortest));
+#$V->hline();
+$L->info();
+$L->info('Input');
+$L->info(sprintf("%-15s %10d #","Sequences", $total_count));
+$L->info(sprintf("%-15s %10d bp", "Total", $total_length));
+$L->info(sprintf("%-15s %10d bp", "Longest", $total_longest));
+$L->info(sprintf("%-15s %10d bp", "Shortest",$total_shortest));
 
 my @total_Ns;
 foreach (sort{$a <=> $b}keys %total_Ns){
-	$V->verbose(sprintf("%-15s %10d bp", "N$_", $total_Ns{$_}));
+	$L->info(sprintf("%-15s %10d bp", "N$_", $total_Ns{$_}));
 	push @total_Ns, $total_Ns{$_};
 }
 
-$V->hline();
+#$V->hline();
 
 unless(@filtered_L){
-	$V->verbose("No sequences found matching given filter criteria");
+	$L->info("No sequences found matching given filter criteria");
 	exit(0);
 }
 
 
 
-$V->verbose("Filtered");
-$V->verbose(sprintf("%-15s %10d #","Sequences", scalar @filtered_L));
-$V->verbose(sprintf("%-15s %10d bp", "Total", $filtered_length));
-$V->verbose(sprintf("%-15s %10d bp", "Longest", $filtered_longest));
-$V->verbose(sprintf("%-15s %10d bp", "Shortest", $filtered_shortest));
+$L->info("Filtered");
+$L->info(sprintf("%-15s %10d #","Sequences", scalar @filtered_L));
+$L->info(sprintf("%-15s %10d bp", "Total", $filtered_length));
+$L->info(sprintf("%-15s %10d bp", "Longest", $filtered_longest));
+$L->info(sprintf("%-15s %10d bp", "Shortest", $filtered_shortest));
 
 my @filtered_Ns;
 foreach (sort{$a <=> $b}keys %filtered_Ns){
-	$V->verbose(sprintf("%-15s %10d bp", "N$_", $filtered_Ns{$_}));
+	$L->info(sprintf("%-15s %10d bp", "N$_", $filtered_Ns{$_}));
 	push @filtered_Ns, $filtered_Ns{$_};
 }
 
@@ -921,15 +957,16 @@ foreach (sort{$a <=> $b}keys %filtered_Ns){
 my @BCs;
 if(keys %BCs){
 	foreach my $k(sort keys %BCs){
-		$V->verbose(sprintf("%-15s %10d bp %10.2f %%", "[$k]", $BCs{$k}, (100*$BCs{$k}/$filtered_length)));
+		$L->info(sprintf("%-15s %10d bp %10.2f %%", "[$k]", $BCs{$k}, (100*$BCs{$k}/$filtered_length)));
 		push @BCs, $BCs{$k};
 	}
 }
 
 
-$V->hline();
-$V->nline();
-
+#$V->hline();
+#$V->nline();
+$L->info();
+$L->info();
 
 
 if($tsv){
@@ -957,15 +994,15 @@ sub opt2handle{
 	return unless $v; 
 	
 	if($v eq '-'){
-		$V->exit("Cannot read $k from STDIN, already used with $stdin") if $stdin;
+		$L->logexit("Cannot read $k from STDIN, already used with $stdin") if $stdin;
 		$h = \*STDIN;
 		$stdin = $k;
-		$V->verbose("$k: STDIN");
+		$L->info("$k: STDIN");
 	}elsif($v !~ /\n/ && -f $v){ # don't try to find file "$v" if it contains newline
-		$V->verbose("$k: $v");
-		open($h, '<', $v) or $V->exit("$!: $v");
+		$L->info("$k: $v");
+		open($h, '<', $v) or $L->logexit("$!: $v");
 	}else{
-		open($h, '<', \$v) or $V->exit("$!: $v");;
+		open($h, '<', \$v) or $L->logexit("$!: $v");;
 	}
 	return $h;	
 }
@@ -1091,7 +1128,7 @@ sub ids_split_fh{
 			}
 			
 			open(my $fh, '>>', ids_split_filename($match)) 
-				or $V->exit("$!: ".ids_split_filename($match));
+				or $L->logexit("$!: ".ids_split_filename($match));
 			$IDS_SPLIT{$match}{fh} = $fh;
 			$IDS_SPLIT_OPEN++;
 		}
@@ -1105,7 +1142,7 @@ sub ids_split_fh{
 		}
 		
 		open(my $fh, '>', ids_split_filename($match)) 
-			or $V->exit("$!: ".ids_split_filename($match));
+			or $L->logexit("$!: ".ids_split_filename($match));
 		$IDS_SPLIT{$match}{fh} = $fh;
 		$IDS_SPLIT{$match}{open}++;
 		$IDS_SPLIT_OPEN++;
