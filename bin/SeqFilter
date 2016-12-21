@@ -475,7 +475,13 @@ $opt_verbose = 0 if $opt_quiet;
 #$V->verbose("$0-$VERSION");
 
 $L = Log::Log4perl::get_logger();
-
+Log::Log4perl->init( \q(
+        log4perl.rootLogger                     = INFO, Screen
+        log4perl.appender.Screen                = Log::Log4perl::Appender::Screen
+        log4perl.appender.Screen.stderr         = 1
+        log4perl.appender.Screen.layout         = PatternLayout
+			 log4perl.appender.Screen.layout.ConversionPattern = [%d{yy-MM-dd HH:mm:ss}] [SeqF] %m%n
+		     ));
 
 
 ##------------------------------------------------------------------------##
@@ -537,24 +543,9 @@ if(
 my $file_size = $FP->can('file_size') ? $FP->file_size : -s $FP->fh; 
 
 
-my $pg_count = -1;
-
-if (defined($opt_in)) {
-    open(my $in_fh, $opt_in) or die "Couldn't open file, '$opt_reads[$FC]: $!";
-    my $wc_output = `wc -l $opt_in`;
-    chomp($wc_output);
-    $wc_output =~ /^\s*(\d+)(\D.*)?/ or die "Couldn't parse wc output: $wc_output";
-    
-    if($FASTQ == 1){
-	$pg_count = $1/4;
-    }
-    else
-    {
-	$pg_count = $1;
-    }
-    close $in_fh or die;
-}
-
+my $pg_count = -s $opt_in;
+my $pg_seq_count = 0;
+my $next_update =0;
 
 my $TPB = Term::ProgressBar->new({
     name => 'SeqFilter',
@@ -752,7 +743,14 @@ my %BCs; # base contents
 # loop through FASTQ
 LOOP: while (my $SEQ = $FP->next_seq()){
 	$total_count++;
-	$TPB->update();
+	
+	$pg_seq_count += length($SEQ->seq) + length($SEQ->id);
+	
+	if($pg_seq_count >= $next_update){
+
+	    $next_update = $TPB->update($pg_seq_count);
+	}
+	
 	
 	my $ID = $SEQ->id;
 	my $length = length($SEQ->seq);
