@@ -474,7 +474,7 @@ $opt_verbose = 0 if $opt_quiet;
 
 #$V->verbose("$0-$VERSION");
 
-$L = Log::Log4perl::get_logger();
+my $L = Log::Log4perl::get_logger();
 Log::Log4perl->init( \q(
         log4perl.rootLogger                     = INFO, Screen
         log4perl.appender.Screen                = Log::Log4perl::Appender::Screen
@@ -551,7 +551,7 @@ my $TPB = Term::ProgressBar->new({
     name => 'SeqFilter',
     count => $pg_count,
     ETA => 'linear',
-    term_width = 100,
+    term_width => 100,
 				 });
 
 
