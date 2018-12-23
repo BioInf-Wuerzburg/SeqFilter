@@ -379,7 +379,7 @@ for (my $i=0; $i<@{$opt{ifhs}}; $i++) {
 
 	# FILTER
 	# ids
-	if (keys %IDS) {
+	if ($opt{ids}) {
             if ($opt{ids_exclude}) {
                 next if $IDS{$ID}
             } else {
