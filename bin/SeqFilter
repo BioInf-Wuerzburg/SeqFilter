@@ -259,6 +259,10 @@ Report relative amount of given bases. Takes a "," separated
 Plot distribution of bases by length as ASCII plot. Uses linear scale for data
 sets with difference in order of magnitude < 2, log scale otherwise.
 
+=item --[no]-smart-labels
+
+Toggle shortening filepaths to shortest unique labels.
+
 =item -p|--progress
 
 Display progress bars (eq. '--verbose 2')
