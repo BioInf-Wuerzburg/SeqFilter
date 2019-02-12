@@ -731,7 +731,7 @@ sub init{
     }
 
 
-    $opt{_base_content} = [split(/\s*,\s*/, $opt{base_content})] if $opt{base_content};
+    $opt{_base_content} = [sort split(/\s*,\s*/, $opt{base_content})] if $opt{base_content};
     $opt{_N} = [sort{$a <=> $b}(split(/\s*,\s*/, $opt{N}))] if $opt{N};
 
     # stat file handle
