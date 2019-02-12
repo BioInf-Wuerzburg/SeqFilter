@@ -34,7 +34,7 @@ use constant {
 
 use Storable 'dclone';
 
-our $VERSION = '2.1.9';
+our $VERSION = '2.1.10';
 
 =head1 NAME
 
